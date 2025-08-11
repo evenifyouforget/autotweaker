@@ -24,7 +24,7 @@ env.Append(CPPPATH=[
     f'{ftlib_src}/box2d/Include'
 ])
 
-# Build autotweaker executable (same flags as ftlib's cli_adapter)
+# Build measure_single_design executable (same flags as ftlib's cli_adapter)
 backend_env = env.Clone()
 backend_env.Append(
     CCFLAGS=["-Wall", "-O2", "-flto"],
