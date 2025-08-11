@@ -39,7 +39,7 @@ def measure_design(design_struct, config_data, command_prepend=None, command_app
         serialized_input.append(waypoint['radius'])
     serialized_input = ' '.join(map(str, serialized_input))
     # run the executable
-    exec_path = Path() / 'bin' / 'measure_single_design'
+    exec_path = Path(__file__).parent.parent / 'bin' / 'measure_single_design'
     command_prepend = command_prepend or []
     command_append = command_append or []
     command = command_prepend + [exec_path] + command_append
