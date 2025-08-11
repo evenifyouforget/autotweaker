@@ -1,0 +1,27 @@
+import os
+
+Import('env')
+
+# Clone the environment for our backend with same settings as ftlib's cli_adapter
+backend_env = env.Clone()
+
+# Add the same compiler flags as ftlib's cli_adapter
+backend_env.Append(
+    CCFLAGS=[
+        "-Wall",
+        "-O2", 
+        "-flto"
+    ],
+    LINKFLAGS=["-O2", "-flto"]
+)
+
+# Build the autotweaker executable
+autotweaker = backend_env.Program(
+    target='#bin/autotweaker',
+    source=['main.cpp'],
+    LIBS=['ftlib'],
+    LIBPATH=['#bin']
+)
+
+# Set as default target
+Default(autotweaker)
