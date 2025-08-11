@@ -1,4 +1,6 @@
 import json
+from jsonschema import validate
+from pathlib import Path
 from get_design import retrieveDesign, designDomToStruct
 from .measure_design import measure_design
 
@@ -11,7 +13,13 @@ def program_local(args):
         # Load config from JSON file
         with open(args.config_file) as f:
             config_data = json.load(f)
-        # TODO validate JSON data against schema
+
+        # Validate JSON data against schema
+        schema_path = Path(__file__).parent.parent / 'schema' / 'job-config.schema.json'
+        with open(schema_path) as f:
+            schema = json.load(f)
+        validate(instance=config_data, schema=schema)
+
         # Fetch design data
         design_struct = designDomToStruct(retrieveDesign(args.design_id))
         # debug placeholder run
