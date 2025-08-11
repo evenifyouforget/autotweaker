@@ -1,0 +1,110 @@
+# General / OS / Editor specific ignores
+.DS_Store
+.vscode/
+.idea/
+.project
+.directory
+*~
+*.swp
+*.bak
+*.tmp
+*.log
+*.sublime-project
+*.sublime-workspace
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# C / C++ specific ignores
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.so
+*.a
+*.pdb
+*.ilk
+*.aps
+*.bsc
+*.sbr
+*.exp
+*.idb
+*.ipch
+*.pch
+*.vcproj.*.user
+*.vcxproj.*.user
+*.sln.docstates
+*.suo
+*.user
+Debug/
+Release/
+bin/
+obj/
+build/
+dist/
+
+# Python specific ignores
+*.pyc
+__pycache__/
+*.whl
+*.egg
+*.egg-info/
+.Python
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+/data/ # Common for data directories
+/notebooks/.ipynb_checkpoints/ # Jupyter Notebook checkpoints
+/output/ # Common for output files
+
+# SCons build specific ignores
+.sconsign.dblite
+.sconf_temp/
+SConstruct.orig
+SConstruct.bak
+SConstruct.old
+SConstruct.temp
+SConstruct.rej
+SConstruct.diff
+SCons.log
+*.sconsign
+
+# AI / Machine Learning specific ignores
+# Datasets (often large and not version controlled)
+data/
+datasets/
+raw_data/
+processed_data/
+
+# Models and checkpoints
+models/
+checkpoints/
+*.pth
+*.pt
+*.h5
+*.ckpt
+*.pb
+*.keras
+
+# Logs and experiment tracking
+logs/
+runs/
+wandb/ # Weights & Biases
+tensorboard/ # TensorBoard logs
+mlruns/ # MLflow logs
+
+# Environment files
+*.env
+.env
+.DS_Store
+
+# AI Coding Assistant specific ignores (e.g., Copilot, Claude)
+*.copilot
+.copilot/
+.claude/
+copilot_logs/
+claude_logs/
