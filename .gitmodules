@@ -1,0 +1,3 @@
+[submodule "ftlib"]
+	path = ftlib
+	url = git@github.com:evenifyouforget/ftlib.git
