@@ -2,8 +2,7 @@ import os
 import subprocess
 
 # Create environment with same settings as ftlib
-env = Environment(CXX='g++', CXXFLAGS='-std=c++17', CPPPATH=[], LIBS=[], LIBPATH=[])
-env['godot'] = False
+env = Environment(CXX='g++', CXXFLAGS='-std=c++17', CPPDEFINES=['HARDFLOAT_TOGGLE'])
 
 # First build ftlib dependency
 print("Building ftlib dependency...")
@@ -29,14 +28,14 @@ env.Append(CPPPATH=[
 backend_env = env.Clone()
 backend_env.Append(
     CCFLAGS=["-Wall", "-O2", "-flto"],
-    LINKFLAGS=["-O2", "-flto"]
+    LINKFLAGS=["-O2", "-flto"],
 )
 
-autotweaker = backend_env.Program(
-    target='bin/autotweaker',
+measure_single_design = backend_env.Program(
+    target='bin/measure_single_design',
     source=['backend/main.cpp'],
     LIBS=['ftlib'],
     LIBPATH=['ftlib/bin']
 )
 
-Default(autotweaker)
+Default(measure_single_design)
