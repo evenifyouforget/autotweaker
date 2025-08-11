@@ -1,14 +1,15 @@
 import os
 import subprocess
+import sys
 
 # Create environment with same settings as ftlib
 env = Environment(CXX='g++', CXXFLAGS='-std=c++17', CPPDEFINES=['HARDFLOAT_TOGGLE'])
 
-# First build ftlib dependency
 print("Building ftlib dependency...")
-result = subprocess.run(['scons'], cwd='ftlib', capture_output=True, text=True)
+# Pass through all CLI args so scons -c also works
+result = subprocess.run(['scons'] + sys.argv[1:], cwd='ftlib')
 if result.returncode != 0:
-    print(f"Error building ftlib: {result.stderr}")
+    print(f"ftlib sub-build failed. Exiting.")
     Exit(1)
 
 # Set up include paths to ftlib
