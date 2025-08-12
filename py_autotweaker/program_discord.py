@@ -22,6 +22,7 @@ import sys
 import re
 import json
 import time
+import subprocess # For running Git commands to get version info
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 
@@ -75,6 +76,7 @@ MAX_ACTIVE_JOBS_PER_USER = 3 # Maximum number of unfrozen jobs a single user can
 
 # Internal bot state management
 _background_loop_iteration_counter: int = 0 # Increments with each background loop pass, used for round-robin thread allocation.
+_bot_start_time = time.time() # Timestamp when the bot started, used for uptime calculation.
 
 
 # --- Job Data Structure ---
@@ -97,7 +99,8 @@ class Job:
                                                     # used to prioritize jobs that have been waiting longest.
 
     # Time budgeting (Reheating) fields to manage job activity based on user engagement.
-    expiration_time: Optional[float] = None         # Unix timestamp when the job's active time expires and it becomes frozen.
+    expiration_time: Optional[float] = None         # Unix timestamp when the job's active time expires and it becomes frozen (inactive).
+                                                    # If None, the job has never been reheated and is considered frozen.
     funders: dict[int, str] = field(default_factory=dict) # Dictionary of Discord user_id: user_name pairs for users actively "reheating" this job.
 
     # Notification tracking fields to manage one-time alerts for job milestones.
@@ -105,8 +108,10 @@ class Job:
                                                     # used as the primary channel for sending notifications.
     solve_subscribers: dict[int, str] = field(default_factory=dict)     # user_id: user_name for 'on solve' notifications.
     timeout_subscribers: dict[int, str] = field(default_factory=dict)   # user_id: user_name for 'on timeout' notifications.
-    has_solved_since_last_reheat: bool = False      # Flag: True if a 'solve' notification has been sent during the job's current active period.
-    timeout_notified_for_current_period: bool = False # Flag: True if a 'timeout' notification has been sent during the job's current active period.
+    has_solved_since_last_reheat: bool = False      # Flag: True if a 'solve' notification has been sent during the job's current active period (since last reheat).
+                                                    # Resets to False upon a successful 'reheat' operation.
+    timeout_notified_for_current_period: bool = False # Flag: True if a 'timeout' notification has been sent during the job's current active period (since last reheat).
+                                                    # Resets to False upon a successful 'reheat' operation.
 
 
     def is_frozen(self) -> bool:
@@ -194,20 +199,20 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
         user_name (str): The Discord display name of the person initiating the reheat.
     """
     # 1. Enforce per-user active job limit:
-    # Count how many currently unfrozen jobs this specific user is actively funding.
-    current_user_funded_jobs_count = 0
+    # Count how many currently unfrozen jobs this specific user is actively reheating.
+    current_user_reheating_jobs_count = 0
     for _, j_obj in list(jobs.items()): # Iterate over a copy to avoid modification issues during iteration.
         if not j_obj.is_frozen() and user_id in j_obj.funders:
-            current_user_funded_jobs_count += 1
+            current_user_reheating_jobs_count += 1
 
     # Check if the user has reached their maximum active job limit.
-    # The current job is excluded from this count if the user is already funding it and it's active.
-    # This prevents blocking a legitimate reheat of an already funded job.
+    # The current job is excluded from this count if the user is already reheating it and it's active.
+    # This prevents blocking a legitimate reheat of an already reheated job.
     if not job.is_frozen() and user_id in job.funders:
-        pass # User is already funding this active job, no new limit check needed for *this* job.
-    elif current_user_funded_jobs_count >= MAX_ACTIVE_JOBS_PER_USER:
+         pass # User is already reheating this active job, no new limit check needed for *this* job.
+    elif current_user_reheating_jobs_count >= MAX_ACTIVE_JOBS_PER_USER:
         await ctx.send(
-            f"Sorry, **{user_name}**, you are currently actively reheating {current_user_funded_jobs_count} jobs. "
+            f"Sorry, **{user_name}**, you are currently actively reheating {current_user_reheating_jobs_count} jobs. "
             f"You can only actively reheat up to **{MAX_ACTIVE_JOBS_PER_USER}** jobs simultaneously. "
             f"Please let some of your current jobs expire or use `@BotName status` to check their state before reheating more."
         )
@@ -232,8 +237,8 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     final_calculated_duration = min(calculated_duration_base, MAX_JOB_ACTIVE_TIME_SECONDS)
 
     # Determine the start time for extending the expiration:
-    # If the job is currently active and not expired, extend from its existing expiration time.
-    # If the job is already expired or has no prior expiration (first funding), extend from the current time.
+    # If the job is currently active and its expiration is in the future, extend from that future time.
+    # Otherwise (if expired or first funding), extend from the current time.
     current_active_until = job.expiration_time if job.expiration_time is not None and job.expiration_time > time.time() else time.time()
     new_expiration_time = current_active_until + final_calculated_duration
     job.expiration_time = new_expiration_time
@@ -437,6 +442,62 @@ async def _send_notification(bot_instance: commands.Bot, job: Job, subscribers_d
     # After sending notifications (or attempting to), clear the subscriber list for this event.
     # This ensures users are notified only once per event within the current active period.
     subscribers_dict.clear()
+
+
+# --- Git Information Helper ---
+async def get_git_info() -> dict:
+    """
+    Asynchronously retrieves Git information about the current repository.
+    This includes the current branch, whether there are local changes,
+    the number of commits at HEAD, and the current HEAD SHA.
+
+    Returns:
+        dict: A dictionary containing 'branch', 'dirty', 'commits_at_head', and 'head_sha'.
+              Values will be 'N/A' for any piece of information that cannot be retrieved
+              (e.g., Git not installed, not a Git repository).
+    """
+    info = {
+        "branch": "N/A",
+        "dirty": "N/A",
+        "commits_at_head": "N/A",
+        "head_sha": "N/A"
+    }
+
+    try:
+        # Helper to run a shell command and capture output
+        async def run_cmd(cmd: str) -> str:
+            process = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode == 0:
+                return stdout.decode().strip()
+            else:
+                # Log stderr but don't raise, allowing partial info
+                print(f"Git command error for '{cmd}': {stderr.decode().strip()}")
+                return "N/A"
+
+        info["branch"] = await run_cmd("git rev-parse --abbrev-ref HEAD")
+        
+        # Check for dirty status: git status --porcelain returns output if there are uncommitted changes
+        dirty_output = await run_cmd("git status --porcelain")
+        info["dirty"] = "Yes" if dirty_output and dirty_output != "N/A" else "No" # Also handle "N/A" from run_cmd
+
+        info["commits_at_head"] = await run_cmd("git rev-list --count HEAD")
+        info["head_sha"] = await run_cmd("git rev-parse HEAD")
+
+    except FileNotFoundError:
+        print("Git command not found. Please ensure Git is installed and in your PATH for version info.")
+        # All info remains 'N/A' due to initial dictionary values
+    except subprocess.CalledProcessError as e:
+        print(f"Git command failed during info retrieval: {e}")
+        # All info remains 'N/A'
+    except Exception as e:
+        print(f"An unexpected error occurred while getting Git info: {e}")
+
+    return info
 
 
 # --- Discord Bot Setup ---
@@ -1008,6 +1069,101 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
         await ctx.send("".join(error_report_lines))
     
     job.errors.clear() # Clear general job errors after reporting, distinct from `snapshot_errors`.
+
+@bot.command()
+async def version(ctx: commands.Context):
+    """
+    Displays the bot's version information, including Git branch,
+    dirty status, commit count, and HEAD SHA.
+    Usage: @BotName version
+    """
+    git_info = await get_git_info()
+    response = (
+        f"**Bot Version Information:**\n"
+        f"  - **Branch:** `{git_info['branch']}`\n"
+        f"  - **Local Changes (Dirty):** `{git_info['dirty']}`\n"
+        f"  - **Commits at Head:** `{git_info['commits_at_head']}`\n"
+        f"  - **HEAD SHA:** `{git_info['head_sha']}`"
+    )
+    await ctx.send(response)
+
+@bot.command()
+async def stats(ctx: commands.Context):
+    """
+    Displays various operational statistics about the bot and its managed jobs.
+    Usage: @BotName stats
+    """
+    total_jobs = len(jobs)
+    active_jobs_count = 0
+    frozen_jobs_count = 0
+    
+    all_funders_ever = set()
+    current_active_funders = set()
+
+    total_garden_generations = 0
+    total_creatures_processed = 0 # New: To track total num_kills
+    active_gardens_count = 0
+    highest_generation = 0
+    
+    total_errors_logged = 0
+
+    for design_id, job in jobs.items():
+        if job.is_frozen():
+            frozen_jobs_count += 1
+        else:
+            active_jobs_count += 1
+        
+        # Collect all funders, active or not
+        for funder_id in job.funders.keys():
+            all_funders_ever.add(funder_id)
+        
+        # Collect only currently active funders
+        if not job.is_frozen():
+            for funder_id in job.funders.keys():
+                current_active_funders.add(funder_id)
+        
+        if job.garden is not None:
+            if not job.is_frozen(): # Only count active gardens for generation and processing stats
+                total_garden_generations += job.garden.generation
+                active_gardens_count += 1
+                if job.garden.generation > highest_generation:
+                    highest_generation = job.garden.generation
+                total_creatures_processed += job.garden.num_kills # Accumulate num_kills for active gardens
+        
+        total_errors_logged += len(job.errors)
+
+    avg_generation = total_garden_generations / active_gardens_count if active_gardens_count > 0 else 0
+    avg_creatures_processed_per_garden = total_creatures_processed / active_gardens_count if active_gardens_count > 0 else 0
+
+    uptime_seconds = time.time() - _bot_start_time
+    # Format uptime nicely (days, hours, minutes, seconds)
+    days, remainder = divmod(int(uptime_seconds), 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime_string = []
+    if days > 0: uptime_string.append(f"{days}d")
+    if hours > 0: uptime_string.append(f"{hours}h")
+    if minutes > 0: uptime_string.append(f"{minutes}m")
+    # Only append seconds if no larger unit was added OR if seconds is the only non-zero unit
+    if seconds > 0 or not uptime_string: uptime_string.append(f"{seconds}s")
+    uptime_display = " ".join(uptime_string)
+
+    response = (
+        f"**Bot Operational Statistics:**\n"
+        f"  - **Uptime:** {uptime_display}\n"
+        f"  - **Total Jobs Managed:** {total_jobs}\n"
+        f"  - **Active Jobs:** {active_jobs_count}\n"
+        f"  - **Frozen Jobs:** {frozen_jobs_count}\n"
+        f"  - **Total Unique Funders (Ever):** {len(all_funders_ever)}\n"
+        f"  - **Currently Active Funders:** {len(current_active_funders)}\n"
+        f"  - **Active Gardens:** {active_gardens_count}\n"
+        f"  - **Average Active Garden Generation:** {avg_generation:.2f}\n"
+        f"  - **Highest Active Garden Generation:** {highest_generation}\n"
+        f"  - **Total Creatures Processed (Completed Runs):** {total_creatures_processed}\n"
+        f"  - **Average Creatures Processed per Active Garden:** {avg_creatures_processed_per_garden:.2f}\n"
+        f"  - **Total Errors Logged:** {total_errors_logged} (across all jobs)\n"
+    )
+    await ctx.send(response)
 
 
 # --- Background Task for Job Maintenance ---
