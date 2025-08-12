@@ -19,6 +19,7 @@ import sys # Import sys for exiting the script
 import re # Import regex module for parsing design IDs from URLs
 from dataclasses import dataclass, field # Import dataclass and field for default_factory
 import json # Import json for parsing and serializing JSON
+import time # For time.time()
 # Import Optional for type hints compatible with Python < 3.10
 from typing import Optional
 from pathlib import Path # For future disk storage management
@@ -30,12 +31,23 @@ from .auto_login import auto_login_get_user_id # Import auto_login_get_user_id f
 from .job_struct import Creature, Garden, GardenStatus # Import GardenStatus as well for checkup return
 from .json_validate import json_validate
 from .performance import get_thread_count
+# from .performance import get_thread_count # Removed: Defining stub directly here
 
-# --- Constants ---
+# --- Constants & Stubs ---
+
 MAX_THREADS = get_thread_count() # Global constant for maximum threads available across all gardens
 MAX_SNAPSHOT_K = 3 # Maximum number of best creatures to snapshot and upload
 RETAIN_BEST_K = max(MAX_THREADS, MAX_SNAPSHOT_K) + 1 # Global constant for retaining best K creatures in evolution
-MAX_GARDEN_SIZE = RETAIN_BEST_K * 3 # Global constant for the maximum garden size
+MAX_GARDEN_SIZE = RETAAIN_BEST_K * 3 # Global constant for the maximum garden size
+
+# Time Credit Budgeting (Reheating) Constants
+SINGLE_USER_TIME_SECONDS = 3600  # 1 hour
+# New factor for superlinear growth: 0.5 means that for N funders, you get N * (1 + (N-1)*0.5) hours
+# E.g., 2 funders: 2 * (1 + 1*0.5) = 2 * 1.5 = 3x single user time
+# E.g., 3 funders: 3 * (1 + 2*0.5) = 3 * 2.0 = 6x single user time
+SUPERLINEAR_GROWTH_FACTOR = 0.5 
+MAX_FUNDS_TIME_SECONDS = 3 * 24 * 3600  # 3 days
+MAX_JOBS_PER_USER = 3 # Maximum number of unfrozen jobs a single user can fund
 
 # Global counter for background loop iterations, used for round-robin prioritization
 _background_loop_iteration_counter: int = 0
@@ -56,13 +68,19 @@ class Job:
     # New field to track when this job last received threads for round-robin prioritization
     last_turn_allocated: int = 0 # Initialize to 0, jobs with lower numbers get priority
 
+    # Reheating/Budget fields
+    expiration_time: Optional[float] = None # Unix timestamp when the job will become frozen
+    funders: dict[int, str] = field(default_factory=dict) # user_id: user_name
+
     def is_frozen(self) -> bool:
         """
-        Stub function to determine if a job is "frozen" and should not
-        undergo garden maintenance. Currently always returns False.
+        Determines if a job is "frozen" and should not undergo garden maintenance.
+        A job is frozen if its expiration_time is in the past, or if no expiration
+        time has been set (meaning it's not currently funded).
         """
-        # This will eventually contain logic based on budget, time, etc.
-        return False
+        if self.expiration_time is None:
+            return True # No expiration time set means it's frozen by default
+        return time.time() > self.expiration_time
 
 # Global dictionary to store jobs, keyed by design ID.
 # This data will be stored in memory and will reset if the bot restarts.
@@ -113,6 +131,65 @@ def get_or_create_job(design_id: int) -> Job:
     else:
         print(f"Retrieving existing job for design ID: {design_id}")
     return jobs[design_id]
+
+# --- Shared Reheating Logic ---
+async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, user_id: int, user_name: str) -> None:
+    """
+    Handles the core logic for "reheating" (funding) a job.
+    Includes per-user limits and superlinear time scaling.
+    """
+    # 1. Check per-user job limit (only count unfrozen jobs the user funds)
+    current_user_funded_jobs = 0
+    for j_id, j_obj in jobs.items():
+        # Iterate over a copy of items to avoid issues if 'jobs' is modified
+        if not j_obj.is_frozen() and user_id in j_obj.funders:
+            current_user_funded_jobs += 1
+
+    # Subtract the current job if the user is already funding it and it's counted in the limit
+    # This prevents counting the current job twice or blocking a reheat if they are already funding THIS job
+    if not job.is_frozen() and user_id in job.funders:
+         # If the user is already a funder for this job, and the job is active,
+         # we don't count it towards the limit when checking for *new* jobs.
+         pass
+    elif current_user_funded_jobs >= MAX_JOBS_PER_USER:
+        await ctx.send(
+            f"Sorry, **{user_name}**, you are currently reheating {current_user_funded_jobs} jobs. "
+            f"You can only reheat up to {MAX_JOBS_PER_USER} jobs simultaneously. "
+            f"Please let some of your current jobs expire or use `@BotName status` to check their state before reheating more."
+        )
+        job.errors.append(f"User {user_name} (ID: {user_id}) exceeded per-user job limit during reheat attempt for design {design_id}.")
+        return
+
+    # 2. Add current user as funder
+    job.funders[user_id] = user_name
+
+    # 3. Calculate new expiration time with superlinear scaling
+    num_funders = len(job.funders)
+    
+    # Calculate base duration based on number of funders
+    # New formula: guarantees linear growth and adds a superlinear component
+    # f(n) = n * f(1) * (1 + (n-1) * SUPERLINEAR_GROWTH_FACTOR)
+    calculated_duration = SINGLE_USER_TIME_SECONDS * num_funders * (1 + (num_funders - 1) * SUPERLINEAR_GROWTH_FACTOR)
+    calculated_duration = min(calculated_duration, MAX_FUNDS_TIME_SECONDS)
+
+    # The new expiration time should be from now, or from the current expiration time, whichever is later.
+    # This ensures reheating extends from when it would have expired, not just from the moment of reheat.
+    # However, if the job is already expired, we extend from the current time.
+    current_active_until = job.expiration_time if job.expiration_time is not None and job.expiration_time > time.time() else time.time()
+    new_expiration_time = current_active_until + calculated_duration
+    job.expiration_time = new_expiration_time
+
+    # 4. Construct Discord timestamp for relative time display
+    discord_timestamp_relative = f"<t:{int(new_expiration_time)}:R>"
+    
+    funder_names = ", ".join(job.funders.values())
+    await ctx.send(
+        f"Job for design ID **{design_id}** has been reheated! 🎉 "
+        f"It will now remain active until {discord_timestamp_relative}. "
+        f"Currently funded by: {funder_names}."
+    )
+    print(f"Design ID {design_id} reheated by {user_name} (ID: {user_id}). New expiration: {new_expiration_time} ({num_funders} funders)")
+    job.errors.clear() # Clear errors on successful reheat
 
 # --- Discord Bot Setup ---
 
@@ -221,9 +298,17 @@ async def status(ctx, *, design_input: str):
     if job.garden is not None:
         garden_status = "Garden initialized."
     
-    frozen_status = "Not frozen."
-    if job.is_frozen():
-        frozen_status = "Frozen (maintenance skipped)."
+    # New status for frozen/reheating
+    frozen_status_text = "Not funded (frozen by default)."
+    if job.expiration_time is not None:
+        if job.is_frozen():
+            frozen_status_text = f"Frozen (expired {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')})."
+        else:
+            frozen_status_text = f"Active until {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}."
+
+    funder_names_display = "None"
+    if job.funders:
+        funder_names_display = ", ".join(job.funders.values())
 
 
     # Report errors if any, with trimming
@@ -233,7 +318,7 @@ async def status(ctx, *, design_input: str):
         # Calculate base length of the main response to ensure trimming accounts for it
         base_response_length = len(
             f"Job for design ID **{design_id}** is active. "
-            f"Status: {config_status}. {design_struct_status}. {garden_status}. {frozen_status}"
+            f"Status: {config_status}. {design_struct_status}. {garden_status}. {frozen_status_text}. Funders: {funder_names_display}"
         ) + len("\n**Errors:**\n") # Account for the error header and newline
 
         current_length = base_response_length
@@ -251,7 +336,8 @@ async def status(ctx, *, design_input: str):
 
     full_response = (
         f"Job for design ID **{design_id}** is active. "
-        f"Status: {config_status}. {design_struct_status}. {garden_status}. {frozen_status}"
+        f"Status: {config_status}. {design_struct_status}. {garden_status}. "
+        f"Time: {frozen_status_text}. Funders: {funder_names_display}."
     )
     if error_report_lines:
         full_response += "\n".join(error_report_lines)
@@ -388,6 +474,7 @@ async def start_job(ctx, *, design_input: str):
     """
     Attempts to initialize the Garden (start the job) for a given design.
     Requires both the design structure and a JSON configuration to be present.
+    Automatically "reheats" the job after starting.
 
     Usage:
       @BotName start_job 12345
@@ -405,34 +492,81 @@ async def start_job(ctx, *, design_input: str):
     job = get_or_create_job(design_id)
     job.errors.clear() # Clear previous errors before attempting to start the job
 
-    # Check prerequisites
+    # Check prerequisites for garden initialization
     if job.design_struct is None:
         job.errors.append("Cannot start garden: Design structure not loaded. Use `@BotName status` to load it first.")
     if job.config_json is None:
         job.errors.append("Cannot start garden: JSON config not set. Use `@BotName set_config` to set it first.")
 
-    if job.errors: # If there are existing errors or new ones from prerequisite checks
+    if job.errors: # If there are errors from prerequisite checks
         error_report = "\n**Errors:**\n" + "\n".join([f"- {err}" for err in job.errors])
         await ctx.send(f"Could not start garden for design ID **{design_id}**. Please fix the listed issues.{error_report}")
         job.errors.clear()
         return
 
     if job.garden is not None:
-        await ctx.send(f"Garden for design ID **{design_id}** is already running.")
+        await ctx.send(f"Garden for design ID **{design_id}** is already running. Attempting to reheat instead.")
+        # If garden is already running, treat start_job as a reheat request
+        user_id = ctx.author.id
+        user_name = ctx.author.display_name
+        await _reheat_job_logic(ctx, design_id, job, user_id, user_name)
         return
 
     try:
         # Initialize the garden
-        # Assumes Creature takes an FCDesignStruct and Garden takes a list of Creatures, size, and config
         job.garden = Garden([Creature(job.design_struct)], MAX_GARDEN_SIZE, job.config_json)
         await ctx.send(f"Garden successfully initialized for design ID **{design_id}**!")
         print(f"Garden initialized for design ID {design_id}")
+
+        # Automatically "reheat" the job after it's started
+        user_id = ctx.author.id
+        user_name = ctx.author.display_name
+        await _reheat_job_logic(ctx, design_id, job, user_id, user_name)
+
     except Exception as e:
         job.errors.append(f"Failed to initialize garden for ID {design_id}: {e}")
         await ctx.send(f"Failed to initialize garden for design ID **{design_id}**: {e}")
         print(f"Error initializing garden for design {design_id}: {e}")
     finally:
         job.errors.clear() # Clear errors after attempting initialization
+
+# New Command: reheat
+@bot.command()
+async def reheat(ctx, *, design_input: str):
+    """
+    Reheats (funds) a design job, extending its active time.
+    Multiple users reheating the same job will extend its time superlinearly.
+    You can reheat up to 3 jobs at once.
+
+    Usage:
+      @BotName reheat 12345
+      @BotName reheat https://fantasticcontraption.com/?designId=12345
+    """
+    design_id = extract_design_id(design_input)
+
+    if design_id is None:
+        await ctx.send(
+            f"Sorry, I couldn't understand that design ID. "
+            f"Please provide a number or a link like `https://example.com/?designId=12345`."
+        )
+        return
+
+    job = get_or_create_job(design_id)
+    job.errors.clear() # Clear previous errors
+
+    # Check if a garden has been started for this job
+    if job.garden is None:
+        job.errors.append("Cannot reheat job: Garden not initialized. Use `@BotName start_job` first.")
+        await ctx.send(f"Cannot reheat job for design ID **{design_id}**. Garden not active. Please use `@BotName start_job`.")
+        job.errors.clear()
+        return
+
+    user_id = ctx.author.id
+    user_name = ctx.author.display_name
+
+    # Call the shared reheating logic
+    await _reheat_job_logic(ctx, design_id, job, user_id, user_name)
+    job.errors.clear() # Ensure errors from _reheat_job_logic are cleared after report
 
 # New Command: snapshot
 @bot.command()
