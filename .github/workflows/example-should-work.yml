@@ -23,15 +23,9 @@ jobs:
         with:
           python-version: '3.x' # Use the latest Python 3 version available
 
-      - name: Install SCons
+      - name: Install SCons and other dependencies with pip
         run: |
-          # Install SCons using pip, ensuring it's available for your build process.
-          pip install scons
-
-      - name: Install JSONSchema
-        run: |
-          # Install jsonschema using pip, if your project or script requires it for validation.
-          pip install jsonschema
+          pip install scons jsonschema requests
 
       - name: Run script and capture output
         id: run_script
