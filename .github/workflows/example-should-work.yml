@@ -1,0 +1,38 @@
+name: Run the example job (half to end, no online save)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  run_script_and_check_score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run script and capture output
+        id: run_script
+        run: |
+          # The script's output is redirected to a file and also to stdout
+          ./example/run_example.sh -t 30 | tee output.log
+
+      - name: Check for negative score
+        run: |
+          # The `grep` command searches for the pattern "Best score so far: "
+          # The output is then piped to `awk` to extract the number
+          # The number is assigned to the `score` variable
+          score=$(grep "Best score so far: " output.log | awk '{print $NF}')
+          
+          # This if-statement checks if the extracted score is less than 0
+          # If it's not, the workflow will fail with an error message
+          if (( $(echo "${score} < 0" | bc -l) )); then
+            echo "Success: The score is negative."
+          else
+            echo "Error: The score is not negative. Found score: ${score}"
+            exit 1
+          fi
