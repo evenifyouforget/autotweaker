@@ -30,6 +30,7 @@ def is_design_valid(design: FCDesignStruct) -> bool:
 
 def generate_mutant(design: FCDesignStruct) -> FCDesignStruct:
     mutant = copy_design(design)
+    # TODO actual proper mutation
     if mutant.design_pieces:
         index = random.randrange(len(mutant.design_pieces))
         piece = mutant.design_pieces[index]
