@@ -5,7 +5,7 @@ This bot responds to commands when mentioned (e.g., @BotName command).
 It enables users to:
 - Start and "reheat" (fund) design evolution jobs.
 - View the status of active and frozen jobs, including time budgets and contributors.
-- Subscribe to notifications for job milestones (e.g., when a design solves or times out).
+- Subscribe to notifications for job milestones (e.e.g., when a design solves or times out).
 - Snapshot the best evolved designs by uploading them to the FC servers.
 
 Jobs are managed in memory; data will reset if the bot restarts.
@@ -25,14 +25,12 @@ import time
 import subprocess # For running Git commands to get version info
 import logging    # Import the logging module
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Union
+from typing import Optional, List, Tuple, Union, Any
 
 # --- Third-Party Library Imports ---
 import discord
 from discord.ext import commands
 # Assuming jsonschema is installed and ValidationError is directly importable from it.
-# If json_validate wraps this in its own exception or a generic Exception,
-# you might adjust this import or the try-except block accordingly.
 from jsonschema import ValidationError 
 
 # --- Local Module Imports (Assumed to be in the same package/directory) ---
@@ -46,10 +44,10 @@ from jsonschema import ValidationError
 from get_design import retrieveDesign, designDomToStruct, FCDesignStruct
 from save_design import save_design
 from .auto_login import auto_login_get_user_id
+# Updated Garden import to reflect the user's provided structure
 from .job_struct import Creature, Garden, GardenStatus
 # This import is conceptual; in a real scenario, json_validate would need to be updated
 # to return ValidationError details if it uses jsonschema.
-# For this code, we're assuming json_validate returns True for success, or a string error message for failure.
 from .json_validate import json_validate 
 from .performance import get_thread_count # Nontrivial library function for available threads
 
@@ -687,9 +685,9 @@ async def status(ctx: commands.Context, *, design_input: str):
     if job.design_struct is not None:
         design_struct_status = "Design structure is loaded. ✅"
 
-    garden_status = "Not initialized. 🚫"
+    garden_status_text = "Not initialized. 🚫"
     if job.garden is not None:
-        garden_status = "Initialized. 🌱"
+        garden_status_text = f"Initialized. 🌱 Creatures Processed: {job.garden.num_kills}"
     
     # Status indicating whether the job is active or frozen, with a relative timestamp for expiration.
     active_time_status = "Not actively reheated (frozen by default). 🧊"
@@ -728,7 +726,7 @@ async def status(ctx: commands.Context, *, design_input: str):
             f"Job for design ID **{design_id}** details:\n"
             f"  - **Configuration:** {config_status}\n"
             f"  - **Design Structure:** {design_struct_status}\n"
-            f"  - **Garden Status:** {garden_status}\n"
+            f"  - **Garden Status:** {garden_status_text}\n"
             f"  - **Active Time:** {active_time_status}\n"
             f"  - **Actively Reheated By:** {funder_names_display}\n"
             f"  - **Notifications:**\n"
@@ -749,10 +747,10 @@ async def status(ctx: commands.Context, *, design_input: str):
 
     # Construct the final, comprehensive response message.
     full_response = (
-        f"Job for design ID **{design_id}** details:\n" # Changed "is active" to "details"
+        f"Job for design ID **{design_id}** details:\n"
         f"  - **Configuration:** {config_status}\n"
         f"  - **Design Structure:** {design_struct_status}\n"
-        f"  - **Garden Status:** {garden_status}\n"
+        f"  - **Garden Status:** {garden_status_text}\n"
         f"  - **Active Time:** {active_time_status}\n"
         f"  - **Actively Reheated By:** {funder_names_display}\n"
         f"  - **Notifications:**\n"
@@ -1247,10 +1245,9 @@ async def stats(ctx: commands.Context):
     all_funders_ever = set()
     current_active_funders = set()
 
-    total_garden_generations = 0
+    # Removed generation-related stats based on user feedback
     total_creatures_processed = 0 # To track total num_kills across all active gardens
     active_gardens_count = 0
-    highest_generation = 0
     
     total_errors_logged = 0
 
@@ -1270,16 +1267,12 @@ async def stats(ctx: commands.Context):
                 current_active_funders.add(funder_id)
         
         if job.garden is not None:
-            if not job.is_frozen(): # Only count active gardens for generation and processing stats
-                total_garden_generations += job.garden.generation
+            if not job.is_frozen(): # Only count active gardens for processing stats
                 active_gardens_count += 1
-                if job.garden.generation > highest_generation:
-                    highest_generation = job.garden.generation
                 total_creatures_processed += job.garden.num_kills # Accumulate num_kills for active gardens
         
         total_errors_logged += len(job.errors)
 
-    avg_generation = total_garden_generations / active_gardens_count if active_gardens_count > 0 else 0
     avg_creatures_processed_per_garden = total_creatures_processed / active_gardens_count if active_gardens_count > 0 else 0
 
     uptime_seconds = time.time() - _bot_start_time
@@ -1303,9 +1296,7 @@ async def stats(ctx: commands.Context):
         f"  - **Frozen Jobs:** {frozen_jobs_count} (❄️)\n"
         f"  - **Total Unique Funders (Ever):** {len(all_funders_ever)}\n"
         f"  - **Currently Active Funders:** {len(current_active_funders)}\n"
-        f"  - **Active Gardens:** {active_gardens_count} (🌱)\n"
-        f"  - **Average Active Garden Generation:** {avg_generation:.2f}\n"
-        f"  - **Highest Active Garden Generation:** {highest_generation}\n"
+        f"  - **Active Gardens Currently Running:** {active_gardens_count} (🌱)\n"
         f"  - **Total Creatures Processed (Completed Runs):** {total_creatures_processed}\n"
         f"  - **Average Creatures Processed per Active Garden:** {avg_creatures_processed_per_garden:.2f}\n"
         f"  - **Total Errors Logged:** {total_errors_logged} (across all jobs) ⚠️\n"
@@ -1395,7 +1386,8 @@ async def background_loop():
                     
                     # Perform a `checkup` on the garden to get its current status.
                     garden_status = job.garden.checkup()
-                    logger.debug(f"Garden {design_id} Checkup: Active Threads={garden_status.num_active_threads}, Generation={garden_status.generation}")
+                    # Corrected: Removed generation from debug log
+                    logger.debug(f"Garden {design_id} Checkup: Active Threads={garden_status.num_active_threads}")
 
                     # Check for Solve Notification:
                     # Trigger if the best creature has a negative score (indicating a solve) AND
