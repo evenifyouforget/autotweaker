@@ -25,7 +25,7 @@ import time
 import subprocess # For running Git commands to get version info
 import logging    # Import the logging module
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 # --- Third-Party Library Imports ---
 import discord
@@ -38,12 +38,15 @@ from discord.ext import commands
 #   - auto_login: Provides a bot account login to FC for server interactions.
 #   - job_struct: Defines data structures like Creature, Garden, and GardenStatus.
 #   - json_validate: Contains logic for validating job configuration JSON.
-#   - performance: Provides system performance-related utilities, e.g., thread count.
+#   - performance: Provides system performance-related utilities, e.e.g., thread count.
 from get_design import retrieveDesign, designDomToStruct, FCDesignStruct
 from save_design import save_design
 from .auto_login import auto_login_get_user_id
 from .job_struct import Creature, Garden, GardenStatus
-from .json_validate import json_validate
+# This import is conceptual; in a real scenario, json_validate would need to be updated
+# to return ValidationError details if it uses jsonschema.
+# For this code, we're assuming json_validate returns True for success, or a string error message for failure.
+from .json_validate import json_validate 
 from .performance import get_thread_count # Nontrivial library function for available threads
 
 # --- Global Constants & Configuration ---
@@ -217,7 +220,7 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
          pass # User is already reheating this active job, no new limit check needed for *this* job.
     elif current_user_reheating_jobs_count >= MAX_ACTIVE_JOBS_PER_USER:
         await ctx.send(
-            f"Sorry, **{user_name}**, you are currently actively reheating {current_user_reheating_jobs_count} jobs. "
+            f"❌ Sorry, **{user_name}**, you are currently actively reheating {current_user_reheating_jobs_count} jobs. "
             f"You can only actively reheat up to **{MAX_ACTIVE_JOBS_PER_USER}** jobs simultaneously. "
             f"Please let some of your current jobs expire or use `@BotName status` to check their state before reheating more."
         )
@@ -263,7 +266,7 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
 
     # Send a confirmation message to the Discord channel.
     await ctx.send(
-        f"Job for design ID **{design_id}** has been reheated! 🎉 "
+        f"✅ Job for design ID **{design_id}** has been reheated! 🎉 "
         f"It will now remain active until {discord_timestamp_relative}. "
         f"Currently actively reheated by: {funder_names_display}."
     )
@@ -462,7 +465,7 @@ async def get_git_info() -> dict:
     Returns:
         dict: A dictionary containing 'branch', 'dirty', 'commits_at_head', and 'head_sha'.
               Values will be 'N/A' for any piece of information that cannot be retrieved
-              (e.g., Git not installed, not a Git repository).
+              (e.e.g., Git not installed, not a Git repository).
     """
     info = {
         "branch": "N/A",
@@ -535,6 +538,72 @@ async def on_ready():
     # Start the continuous background loop as a task in the bot's event loop.
     bot.loop.create_task(background_loop())
 
+@bot.event
+async def on_message(message: discord.Message):
+    """
+    Event handler that is called whenever a message is sent in any channel the bot can see.
+    This is used to handle bare mentions of the bot to display the help message.
+    """
+    # Ignore messages from the bot itself to prevent infinite loops.
+    if message.author == bot.user:
+        return
+
+    # Check if the message is a direct mention of the bot AND has no other content after the mention.
+    # We use a regex to ensure only the mention itself (possibly with trailing whitespace) is present.
+    mention_pattern = re.compile(rf"<@!?{bot.user.id}>\s*$")
+    if mention_pattern.match(message.content):
+        # Create a CommandContext from the message to use `send_help`.
+        ctx = await bot.get_context(message)
+        logger.info(f"Bot mentioned by {message.author} with no command. Sending help message.")
+        await ctx.send("Hello! 👋 How can I help you evolve fantastic contraptions? Try one of these commands:")
+        await ctx.send_help() # This will send the default help message
+        return # Prevent further command processing for bare mentions
+
+    # For all other messages, let the bot's command processor handle them.
+    await bot.process_commands(message)
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    """
+    Global error handler for bot commands.
+    This catches specific types of errors and provides user-friendly feedback.
+    """
+    if isinstance(error, commands.MissingRequiredArgument):
+        # Handle cases where a required argument is missing for a command.
+        logger.warning(f"MissingRequiredArgument error for command '{ctx.command.name}' by {ctx.author}: {error}")
+        await ctx.send(
+            f"❌ Oops! You're missing a required piece of information for that command. "
+            f"It looks like you forgot to provide the **`{error.param.name}`** argument. "
+            f"Try `@BotName help {ctx.command.name}` for more details on how to use it."
+        )
+    elif isinstance(error, commands.BadArgument):
+        # Handle cases where an argument provided is of the wrong type or format.
+        logger.warning(f"BadArgument error for command '{ctx.command.name}' by {ctx.author}: {error}")
+        await ctx.send(
+            f"❌ Hmm, I had trouble understanding one of your arguments: **`{error}`**. "
+            f"Please double-check the format or type of information you're providing. "
+            f"You can use `@BotName help {ctx.command.name}` for usage examples."
+        )
+    elif isinstance(error, commands.CommandNotFound):
+        # Handle cases where the command doesn't exist.
+        logger.info(f"CommandNotFound error for message '{ctx.message.content}' by {ctx.author}: {error}")
+        await ctx.send(
+            f"❓ I don't recognize that command! 🤔 Try `@BotName help` to see a list of commands I know."
+        )
+    elif isinstance(error, commands.CommandOnCooldown):
+        # Handle commands that are on cooldown.
+        logger.warning(f"CommandOnCooldown error for command '{ctx.command.name}' by {ctx.author}: {error}")
+        await ctx.send(f"⏳ Whoa there, **{ctx.author.display_name}**! That command is on cooldown. Please try again in **{error.retry_after:.1f} seconds**.")
+    elif isinstance(error, commands.NoPrivateMessage):
+        # Handle commands that cannot be used in DMs.
+        logger.warning(f"NoPrivateMessage error for command '{ctx.command.name}' by {ctx.author}: {error}")
+        await ctx.send("🚫 This command can only be used in a server channel, not in a direct message.")
+    else:
+        # For any other unhandled errors, log them and provide a generic error message to the user.
+        logger.exception(f"Unhandled command error in command '{ctx.command.name}' by {ctx.author}: {error}")
+        await ctx.send(f"❌ An unexpected error occurred while trying to run that command: `{error}`. "
+                       "My apologies! The developers have been notified.")
+
 
 # --- Discord Commands ---
 
@@ -575,7 +644,7 @@ async def status(ctx: commands.Context, *, design_input: str):
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -605,25 +674,25 @@ async def status(ctx: commands.Context, *, design_input: str):
             logger.error(f"Error during design retrieval for ID {design_id}: {e}")
 
     # Compile various aspects of the job's status.
-    config_status = "No JSON configuration set."
+    config_status = "No JSON configuration set. ⚙️"
     if job.config_json is not None:
-        config_status = "JSON configuration is set."
+        config_status = "JSON configuration is set. ✅"
 
     design_struct_status = "No design structure loaded."
     if job.design_struct is not None:
-        design_struct_status = "Design structure is loaded."
+        design_struct_status = "Design structure is loaded. ✅"
 
-    garden_status = "Garden not initialized."
+    garden_status = "Not initialized. 🚫"
     if job.garden is not None:
-        garden_status = "Garden initialized."
+        garden_status = "Initialized. 🌱"
     
     # Status indicating whether the job is active or frozen, with a relative timestamp for expiration.
-    active_time_status = "Not actively reheated (frozen by default)."
+    active_time_status = "Not actively reheated (frozen by default). 🧊"
     if job.expiration_time is not None:
         if job.is_frozen():
-            active_time_status = f"Frozen (expired {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')})."
+            active_time_status = f"Frozen (expired {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}). ❄️"
         else:
-            active_time_status = f"Active until {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}."
+            active_time_status = f"Active until {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}. 🔥"
 
     # Display the names of users currently "reheating" (funding) the job.
     funder_names_display = "None"
@@ -631,30 +700,36 @@ async def status(ctx: commands.Context, *, design_input: str):
         funder_names_display = ", ".join(job.funders.values())
 
     # Status for 'on solve' notification subscriptions.
-    solve_alert_status = "No solve subscribers."
+    solve_alert_status = "No solve subscribers. 🔔"
     if job.solve_subscribers:
-        solve_alert_status = f"{len(job.solve_subscribers)} solve subscribers."
+        solve_alert_status = f"{len(job.solve_subscribers)} solve subscribers. 🔔"
     if job.has_solved_since_last_reheat:
-        solve_alert_status += " (Solved this period)"
+        solve_alert_status += " (Solved this period) ✨"
 
     # Status for 'on timeout' notification subscriptions.
-    timeout_alert_status = "No timeout subscribers."
+    timeout_alert_status = "No timeout subscribers. ⏰"
     if job.timeout_subscribers:
-        timeout_alert_status = f"{len(job.timeout_subscribers)} timeout subscribers."
+        timeout_alert_status = f"{len(job.timeout_subscribers)} timeout subscribers. ⏰"
     if job.timeout_notified_for_current_period:
-        timeout_alert_status += " (Notified of timeout this period)"
+        timeout_alert_status += " (Notified of timeout this period) 🚨"
 
 
     # Assemble and potentially trim any accumulated error messages to fit within Discord's message limit (2000 characters).
     error_report_lines = []
     if job.errors:
-        error_report_lines.append("\n**Recent Errors:**")
+        error_report_lines.append("\n**Recent Errors:** ⚠️")
         # Estimate the length of the main status message to ensure errors don't push it over the limit.
         estimated_base_response_length = len(
-            f"Job for design ID **{design_id}** is active. "
-            f"Status: {config_status}. {design_struct_status}. {garden_status}. {active_time_status}. Reheated by: {funder_names_display}."
-            f"Alerts: Solve ({solve_alert_status}), Timeout ({timeout_alert_status})"
-        ) + len("\n**Recent Errors:**\n") # Account for the error header and newline.
+            f"Job for design ID **{design_id}** details:\n"
+            f"  - **Configuration:** {config_status}\n"
+            f"  - **Design Structure:** {design_struct_status}\n"
+            f"  - **Garden Status:** {garden_status}\n"
+            f"  - **Active Time:** {active_time_status}\n"
+            f"  - **Actively Reheated By:** {funder_names_display}\n"
+            f"  - **Notifications:**\n"
+            f"    - Solve Alerts: {solve_alert_status}\n"
+            f"    - Timeout Alerts: {timeout_alert_status}"
+        ) + len("\n**Recent Errors:** ⚠️\n") # Account for the error header and newline.
 
         current_length = estimated_base_response_length
 
@@ -669,7 +744,7 @@ async def status(ctx: commands.Context, *, design_input: str):
 
     # Construct the final, comprehensive response message.
     full_response = (
-        f"Job for design ID **{design_id}** is active:\n"
+        f"Job for design ID **{design_id}** details:\n" # Changed "is active" to "details"
         f"  - **Configuration:** {config_status}\n"
         f"  - **Design Structure:** {design_struct_status}\n"
         f"  - **Garden Status:** {garden_status}\n"
@@ -705,7 +780,7 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -729,21 +804,21 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
                 job.errors.append(f"Failed to parse JSON from attachment: Invalid JSON syntax: {e}")
                 logger.error(f"Failed to parse JSON from attachment: Invalid JSON syntax: {e}")
                 await ctx.send(
-                    f"Failed to parse JSON from attachment for design ID **{design_id}**: "
+                    f"❌ Failed to parse JSON from attachment for design ID **{design_id}**: "
                     f"**Invalid JSON syntax.** Please ensure the file contains well-formed JSON. Error: {e}"
                 )
                 return
             except Exception as e:
                 job.errors.append(f"An unexpected error occurred while reading the attachment: {e}")
                 logger.error(f"An unexpected error occurred while reading the attachment: {e}")
-                await ctx.send(f"An unexpected error occurred while reading the attachment: {e}")
+                await ctx.send(f"❌ An unexpected error occurred while reading the attachment: {e}")
                 return
         else:
             logger.warning(
                 f"Attached file not recognized as JSON. Detected type: {attachment.content_type}, filename: {attachment.filename}."
             )
             await ctx.send(
-                f"The attached file is not a recognized JSON file type. "
+                f"❌ The attached file is not a recognized JSON file type. "
                 f"Expected `application/json` or a `.json` file with `text/plain` type. "
                 f"Detected type: `{attachment.content_type}`, filename: `{attachment.filename}`."
             )
@@ -769,36 +844,40 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
             job.errors.append(f"Failed to parse JSON from message content: Invalid JSON syntax: {e}")
             logger.error(f"Failed to parse JSON from message content: Invalid JSON syntax: {e}")
             await ctx.send(
-                f"Failed to parse JSON from message for design ID **{design_id}**: "
+                f"❌ Failed to parse JSON from message for design ID **{design_id}**: "
                 f"**Invalid JSON syntax.** Please ensure it's valid JSON syntax. "
                 f"Wrapping it in a ````json\n...\n``` ` block is highly recommended for best results. Error: {e}"
             )
             return
     else:
         await ctx.send(
-            "Please provide JSON directly in the message (preferably in a `json` markdown block) "
+            "❓ Please provide JSON directly in the message (preferably in a `json` markdown block) "
             "or as a `.json` attachment."
         )
         return
 
     if parsed_json:
         # Validate the parsed JSON using the external `json_validate` function.
-        if json_validate(parsed_json):
+        validation_result: Union[bool, str] = json_validate(parsed_json) # Expecting True or an error string
+        if validation_result is True:
             job.config_json = parsed_json
             logger.info(f"JSON configuration successfully set for design ID {design_id}.")
-            await ctx.send(f"JSON configuration successfully set for design ID **{design_id}**! ✅")
+            await ctx.send(f"✅ JSON configuration successfully set for design ID **{design_id}**! ⚙️")
         else:
-            job.errors.append(f"JSON configuration for design ID {design_id} is invalid according to backend schema validation rules.")
-            logger.warning(f"JSON configuration for design ID {design_id} is invalid according to backend schema validation rules.")
+            # If validation_result is not True, it's expected to be the error string from jsonschema
+            error_message = str(validation_result) # Ensure it's treated as a string
+            job.errors.append(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
+            logger.warning(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
             await ctx.send(
-                f"JSON configuration for design ID **{design_id}** is invalid. "
-                f"It doesn't conform to the **backend validation schema**. "
+                f"❌ JSON configuration for design ID **{design_id}** is invalid. "
+                f"It doesn't conform to the **backend validation schema**.\n"
+                f"**Validation Error Details:** ```\n{error_message}\n```"
                 f"Please review the expected JSON structure for this configuration."
             )
     else:
         # This case should ideally not be reached if previous checks work.
         logger.error(f"No valid JSON content was found to set for design ID {design_id}. This indicates an unexpected state.")
-        await ctx.send(f"No valid JSON content was found to set for design ID **{design_id}**.")
+        await ctx.send(f"❌ No valid JSON content was found to set for design ID **{design_id}**.")
 
 
 @bot.command()
@@ -818,7 +897,7 @@ async def get_config(ctx: commands.Context, *, design_input: str):
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -827,7 +906,7 @@ async def get_config(ctx: commands.Context, *, design_input: str):
     job.errors.clear() # Clear previous errors before attempting to retrieve config.
 
     if job.config_json is None:
-        await ctx.send(f"No JSON configuration has been set for design ID **{design_id}** yet.")
+        await ctx.send(f"ℹ️ No JSON configuration has been set for design ID **{design_id}** yet.")
         return
 
     json_output_string = json.dumps(job.config_json, indent=2)
@@ -838,14 +917,14 @@ async def get_config(ctx: commands.Context, *, design_input: str):
         with open(filename, 'w') as f:
             f.write(json_output_string)
         await ctx.send(
-            f"Here is the JSON configuration for design ID **{design_id}**:",
+            f"⚙️ Here is the JSON configuration for design ID **{design_id}**:",
             file=discord.File(filename)
         )
         os.remove(filename) # Clean up the temporary file from the local filesystem.
         logger.info(f"JSON configuration for design ID {design_id} sent as file attachment.")
     else:
         # Send the JSON directly in the message within a markdown code block for easy viewing.
-        await ctx.send(f"Here is the JSON config for design ID **{design_id}**:\n```json\n{json_output_string}\n```")
+        await ctx.send(f"⚙️ Here is the JSON config for design ID **{design_id}**:\n```json\n{json_output_string}\n```")
         logger.info(f"JSON configuration for design ID {design_id} sent directly in message.")
 
 
@@ -867,7 +946,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -891,7 +970,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
     # If any prerequisites are missing, report the errors to the user and terminate the command.
     if job.errors:
         error_report = "\n**Errors:**\n" + "\n".join([f"- {err}" for err in job.errors])
-        await ctx.send(f"Could not start garden for design ID **{design_id}**. Please fix the listed issues.{error_report}")
+        await ctx.send(f"❌ Could not start garden for design ID **{design_id}**. Please fix the listed issues.{error_report}")
         job.errors.clear()
         return
 
@@ -899,7 +978,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
     # as a request to "reheat" (re-fund) the existing job instead of starting a new one.
     if job.garden is not None:
         logger.info(f"Garden for design ID {design_id} is already running. Attempting to reheat instead.")
-        await ctx.send(f"Garden for design ID **{design_id}** is already running. Attempting to reheat instead.")
+        await ctx.send(f"ℹ️ Garden for design ID **{design_id}** is already running. Attempting to reheat instead.")
         user_id = ctx.author.id
         user_name = ctx.author.display_name
         await _reheat_job_logic(ctx, design_id, job, user_id, user_name)
@@ -910,7 +989,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
         # based on the design structure and configuration.
         job.garden = Garden([Creature(job.design_struct)], MAX_GARDEN_SIZE, job.config_json)
         logger.info(f"Garden successfully initialized for design ID {design_id}!")
-        await ctx.send(f"Garden successfully initialized for design ID **{design_id}**! 🎉")
+        await ctx.send(f"✅ Garden successfully initialized for design ID **{design_id}**! 🎉")
 
         # Automatically "reheat" (fund) the job for the user who initiated it,
         # granting it an initial period of active time.
@@ -921,7 +1000,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
     except Exception as e:
         job.errors.append(f"Failed to initialize garden for ID {design_id}: {e}")
         logger.error(f"Failed to initialize garden for design {design_id}: {e}")
-        await ctx.send(f"Failed to initialize garden for design ID **{design_id}**: {e}")
+        await ctx.send(f"❌ Failed to initialize garden for design ID **{design_id}**: {e}")
     finally:
         job.errors.clear() # Ensure general job errors are cleared after the attempt to initialize.
 
@@ -945,7 +1024,7 @@ async def reheat(ctx: commands.Context, *, design_input: str):
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -957,7 +1036,7 @@ async def reheat(ctx: commands.Context, *, design_input: str):
     if job.garden is None:
         job.errors.append("Cannot reheat job: Garden not initialized. Please use `@BotName start_job` first.")
         logger.warning(f"Cannot reheat job for design {design_id}: Garden not initialized.")
-        await ctx.send(f"Cannot reheat job for design ID **{design_id}**. Garden not active. Please use `@BotName start_job`.")
+        await ctx.send(f"❌ Cannot reheat job for design ID **{design_id}**. Garden not active. Please use `@BotName start_job`.")
         job.errors.clear()
         return
 
@@ -984,7 +1063,7 @@ async def subscribe_solve(ctx: commands.Context, *, design_input: str):
     """
     design_id = extract_design_id(design_input)
     if design_id is None:
-        await ctx.send("Please provide a valid design ID or link.")
+        await ctx.send("❌ Please provide a valid design ID or link.")
         return
 
     job = get_or_create_job(design_id)
@@ -992,7 +1071,7 @@ async def subscribe_solve(ctx: commands.Context, *, design_input: str):
     # Subscription is only valid for jobs with an active garden.
     if job.garden is None:
         logger.warning(f"Cannot subscribe to solve alerts for design {design_id}: Garden not active.")
-        await ctx.send(f"Cannot subscribe to solve alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
+        await ctx.send(f"❌ Cannot subscribe to solve alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
         return
 
     user_id = ctx.author.id
@@ -1001,7 +1080,7 @@ async def subscribe_solve(ctx: commands.Context, *, design_input: str):
     # Add the user to the solve subscribers list.
     job.solve_subscribers[user_id] = user_name
     logger.info(f"User {user_name} subscribed to solve alerts for design {design_id}")
-    await ctx.send(f"**{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves. 🔔")
+    await ctx.send(f"🔔 **{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves. ")
 
 
 @bot.command()
@@ -1019,7 +1098,7 @@ async def subscribe_timeout(ctx: commands.Context, *, design_input: str):
     """
     design_id = extract_design_id(design_input)
     if design_id is None:
-        await ctx.send("Please provide a valid design ID or link.")
+        await ctx.send("❌ Please provide a valid design ID or link.")
         return
 
     job = get_or_create_job(design_id)
@@ -1027,7 +1106,7 @@ async def subscribe_timeout(ctx: commands.Context, *, design_input: str):
     # Subscription is only valid for jobs with an active garden.
     if job.garden is None:
         logger.warning(f"Cannot subscribe to timeout alerts for design {design_id}: Garden not active.")
-        await ctx.send(f"Cannot subscribe to timeout alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
+        await ctx.send(f"❌ Cannot subscribe to timeout alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
         return
 
     user_id = ctx.author.id
@@ -1036,7 +1115,7 @@ async def subscribe_timeout(ctx: commands.Context, *, design_input: str):
     # Add the user to the timeout subscribers list.
     job.timeout_subscribers[user_id] = user_name
     logger.info(f"User {user_name} subscribed to timeout alerts for design {design_id}")
-    await ctx.send(f"**{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out. 🔔")
+    await ctx.send(f"⏰ **{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out. ")
 
 
 @bot.command()
@@ -1059,7 +1138,7 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
 
     if design_id is None:
         await ctx.send(
-            f"Sorry, I couldn't understand that design ID. "
+            f"❌ Sorry, I couldn't understand that design ID. "
             f"Please provide a numeric ID or a valid Fantastic Contraption link like `https://example.com/?designId=12345`."
         )
         return
@@ -1071,7 +1150,7 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
     if job.garden is None:
         job.errors.append("Garden not initialized for this design. Please use `@BotName start_job` first.")
         logger.warning(f"Cannot snapshot for design {design_id}: Garden not active.")
-        await ctx.send(f"Cannot snapshot for design ID **{design_id}**. Garden not active. Please use `@BotName start_job`.")
+        await ctx.send(f"❌ Cannot snapshot for design ID **{design_id}**. Garden not active. Please use `@BotName start_job`.")
         job.errors.clear()
         return
 
@@ -1080,11 +1159,11 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
     if k is not None:
         if k > DEFAULT_SNAPSHOT_K:
             logger.info(f"Snapshot count cannot exceed {DEFAULT_SNAPSHOT_K}. Using {DEFAULT_SNAPSHOT_K} instead of {k}.")
-            await ctx.send(f"Snapshot count cannot exceed {DEFAULT_SNAPSHOT_K}. Using {DEFAULT_SNAPSHOT_K} instead of {k}.")
+            await ctx.send(f"⚠️ Snapshot count cannot exceed {DEFAULT_SNAPSHOT_K}. Using {DEFAULT_SNAPSHOT_K} instead of {k}.")
             upload_best_k = DEFAULT_SNAPSHOT_K
         elif k <= 0:
             logger.warning("Snapshot count must be positive. No designs will be saved.")
-            await ctx.send("Snapshot count must be positive. No designs will be saved.")
+            await ctx.send("❌ Snapshot count must be positive. No designs will be saved.")
             job.errors.append("Invalid snapshot count provided.")
             job.errors.clear()
             return
@@ -1096,24 +1175,24 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
 
     # Report the results of the snapshot to the Discord channel.
     if saved_links_messages:
-        response_message = f"Successfully snapshotted {len(saved_links_messages)} designs for ID **{design_id}**:"
+        response_message = f"✅ Successfully snapshotted {len(saved_links_messages)} designs for ID **{design_id}**:"
         response_message += "\n" + "\n".join(saved_links_messages)
         await ctx.send(response_message)
         logger.info(f"Successfully snapshotted {len(saved_links_messages)} designs for ID {design_id}.")
     else:
         if snapshot_errors:
             logger.error(f"Failed to snapshot any designs for ID {design_id}. Errors: {snapshot_errors}")
-            await ctx.send(f"Failed to snapshot any designs for ID **{design_id}**. Please check previous error messages or the bot's console for details.")
+            await ctx.send(f"❌ Failed to snapshot any designs for ID **{design_id}**. Please check previous error messages or the bot's console for details.")
         else:
             logger.info(f"No designs were snapshotted for ID {design_id}. No creatures available or k value too high.")
-            await ctx.send(f"No designs were snapshotted for ID **{design_id}**. "
+            await ctx.send(f"ℹ️ No designs were snapshotted for ID **{design_id}**. "
                            f"This might be because no creatures were available in the garden, "
                            f"or the specified `k` value ({upload_best_k}) was too high for the available creatures.")
     
     # Report any lingering snapshot-specific errors that occurred.
     if snapshot_errors:
-        error_report_lines = ["\n**Snapshot Errors:**"]
-        current_length = len("\n**Snapshot Errors:**\n")
+        error_report_lines = ["\n**Snapshot Errors:** ⚠️"]
+        current_length = len("\n**Snapshot Errors:** ⚠️\n")
         
         for i, err in enumerate(snapshot_errors):
             line = f"- {err}"
@@ -1136,7 +1215,7 @@ async def version(ctx: commands.Context):
     """
     git_info = await get_git_info()
     response = (
-        f"**Bot Version Information:**\n"
+        f"**Bot Version Information:** ℹ️\n"
         f"  - **Branch:** `{git_info['branch']}`\n"
         f"  - **Local Changes (Dirty):** `{git_info['dirty']}`\n"
         f"  - **Commits at Head:** `{git_info['commits_at_head']}`\n"
@@ -1207,19 +1286,19 @@ async def stats(ctx: commands.Context):
     uptime_display = " ".join(uptime_string)
 
     response = (
-        f"**Bot Operational Statistics:**\n"
+        f"**Bot Operational Statistics:** 📊\n"
         f"  - **Uptime:** {uptime_display}\n"
         f"  - **Total Jobs Managed:** {total_jobs}\n"
-        f"  - **Active Jobs:** {active_jobs_count}\n"
-        f"  - **Frozen Jobs:** {frozen_jobs_count}\n"
+        f"  - **Active Jobs:** {active_jobs_count} (🔥)\n"
+        f"  - **Frozen Jobs:** {frozen_jobs_count} (❄️)\n"
         f"  - **Total Unique Funders (Ever):** {len(all_funders_ever)}\n"
         f"  - **Currently Active Funders:** {len(current_active_funders)}\n"
-        f"  - **Active Gardens:** {active_gardens_count}\n"
+        f"  - **Active Gardens:** {active_gardens_count} (🌱)\n"
         f"  - **Average Active Garden Generation:** {avg_generation:.2f}\n"
         f"  - **Highest Active Garden Generation:** {highest_generation}\n"
         f"  - **Total Creatures Processed (Completed Runs):** {total_creatures_processed}\n"
         f"  - **Average Creatures Processed per Active Garden:** {avg_creatures_processed_per_garden:.2f}\n"
-        f"  - **Total Errors Logged:** {total_errors_logged} (across all jobs)\n"
+        f"  - **Total Errors Logged:** {total_errors_logged} (across all jobs) ⚠️\n"
     )
     logger.info("Bot statistics displayed.")
     await ctx.send(response)
