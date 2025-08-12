@@ -4,13 +4,31 @@ from jsonschema import validate
 from pathlib import Path
 import pickle
 import time
+import numpy as np
+from PIL import Image
 from get_design import retrieveDesign, designDomToStruct
 from save_design import save_design
 from .auto_login import auto_login_get_user_id
 from .job_struct import Creature, Garden
+from .screenshot import screenshot_design
 from .performance import get_thread_count
 
 def program_local(args):
+    # Fetch design data
+    design_struct = designDomToStruct(retrieveDesign(args.design_id))
+        
+    # Generate thumbnail if requested
+    if args.output_thumbnail_image:
+        
+        # Generate screenshot
+        image_dimensions = (args.thumbnail_width, args.thumbnail_height)
+        screenshot = screenshot_design(design_struct, image_dimensions, use_rgb=True)
+        
+        # Save image
+        pil_image = Image.fromarray(screenshot, mode='RGB')
+        pil_image.save(args.output_thumbnail_image)
+        print(f"Thumbnail saved to: {args.output_thumbnail_image}")
+
     if args.do_generate_config:
         print('Generate config pass not currently supported')
         exit(1)
@@ -42,9 +60,6 @@ def program_local(args):
         with open(schema_path) as f:
             schema = json.load(f)
         validate(instance=config_data, schema=schema)
-
-        # Fetch design data
-        design_struct = designDomToStruct(retrieveDesign(args.design_id))
 
         # Set up garden
         garden = Garden([Creature(design_struct)], max_garden_size, config_data)

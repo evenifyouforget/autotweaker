@@ -111,3 +111,6 @@ claude_logs/
 
 # autotweaker quicksaves
 .quicksave
+
+# example artifacts
+example/thumbnail.png
