@@ -84,3 +84,5 @@ We add the distance from the next checkpoint's position to the next next checkpo
 The goal area center is implicitly the last checkpoint.
 
 Due to triangle math, there is implicitly a small bonus for reaching each checkpoint.
+
+These conventions also mean that a negative score means a solve.

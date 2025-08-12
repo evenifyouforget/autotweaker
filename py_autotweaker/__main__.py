@@ -18,6 +18,8 @@ def main():
     parser_local.add_argument('-t', '--timeout-seconds', type=float, default=5.0, help='Stop if the program has been running for this many seconds')
     parser_local.add_argument('-w', '--stop-on-win', action='store_true', help='Stop if the design finds a solve')
     parser_local.add_argument('-n', '--max-threads', default='auto', help='Override the max threads that will be used')
+    parser_local.add_argument('-k', '--upload-best-k', type=int, default=3, help='Upload this many of the top performers')
+    parser_local.add_argument('-m', '--max-garden-size', help='Override number of creatures to keep in garden')
     parser_local.set_defaults(func=program_local)
 
     # Parse the arguments

@@ -1,10 +1,13 @@
+import itertools
 import json
 from jsonschema import validate
 from pathlib import Path
+import time
 from get_design import retrieveDesign, designDomToStruct
-from save_design import fc_login, save_design
-from .measure_design import measure_design
-from .mutate_validate import is_design_valid, generate_mutant
+from save_design import save_design
+from .auto_login import auto_login_get_user_id
+from .job_struct import Creature, Garden
+from .performance import get_thread_count
 
 def program_local(args):
     if args.do_generate_config:
@@ -12,6 +15,23 @@ def program_local(args):
         exit(1)
 
     if args.do_autotweak:
+        # Start the clock
+        start_time = time.time()
+
+        # Get user ID, needed for saving
+        user_id = auto_login_get_user_id()
+
+        # Configure threads
+        max_threads = get_thread_count(args.max_threads)
+
+        # Other config
+        timeout_seconds = args.timeout_seconds
+        stop_on_win = args.stop_on_win
+        upload_best_k = args.upload_best_k
+        max_garden_size = args.max_garden_size
+        if not max_garden_size:
+            max_garden_size = max(upload_best_k, max_threads) * 3
+
         # Load config from JSON file
         with open(args.config_file) as f:
             config_data = json.load(f)
@@ -24,24 +44,28 @@ def program_local(args):
 
         # Fetch design data
         design_struct = designDomToStruct(retrieveDesign(args.design_id))
-        # debug placeholder run
-        run_result = measure_design(design_struct=design_struct, config_data=config_data)
-        baseline_score = run_result.best_score
-        print(f'Baseline score: {baseline_score}')
-        # more test runs
-        for i in range(10):
-            print(f'Attempt {i+1} of 10')
-            mutant_design = generate_mutant(design_struct)
-            if not is_design_valid(mutant_design):
-                continue
-            new_run_result = measure_design(design_struct=mutant_design, config_data=config_data)
-            new_score = new_run_result.best_score
-            if new_score < baseline_score:
-                print(f'Improved design achieved score: {new_score}')
-                design_struct = mutant_design
-                baseline_score = new_score
-        # debug save
-        user_id = fc_login(input('Enter username: '), input('Enter password: ')).user_id
-        print(f'You user id: {user_id}')
-        saved_design_id = save_design(design_struct, user_id)
-        print(f'Saved to https://ft.jtai.dev/?designId={saved_design_id}')
+
+        # Set up garden
+        garden = Garden([Creature(design_struct)], max_garden_size, config_data)
+        
+        # Loop until end condition reached
+        for loop_count in itertools.count():
+            time_elapsed = time.time() - start_time
+            print(f'# Loop #{loop_count + 1} begins, total time {time_elapsed:.2f} seconds since start')
+            if time_elapsed > timeout_seconds:
+                print(f'Stopping due to time limit reached ({timeout_seconds} seconds)')
+                break
+            garden_status = garden.checkup()
+            print(f'Best score so far: {garden_status.best_score}')
+            if stop_on_win and garden_status.best_score <= 0:
+                print('Stopping early since a solve was found')
+                break
+            garden.evolve(max_threads, upload_best_k)
+            garden.start(max_threads - garden_status.num_active_threads)
+            print(f'Statistics: {garden.num_kills} creatures have been culled so far')
+
+        # Save results
+        print(f'Uploading up to {upload_best_k} best creatures')
+        for rank, creature in enumerate(garden.creatures[:upload_best_k]):
+            saved_design_id = save_design(creature.design_struct, user_id)
+            print(f'{rank+1}. Saved to https://ft.jtai.dev/?designId={saved_design_id} achieving score of {creature.best_score}')

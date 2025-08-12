@@ -5,7 +5,7 @@ import subprocess
 
 RunDesignResult = namedtuple('RunDesignResult', ['proc', 'real_solve_ticks', 'real_end_ticks', 'best_score'])
 
-def measure_design(design_struct, config_data, command_prepend=None, command_append=None):
+def measure_design(design_struct, config_data, command_prepend=None, command_append=None, nonblocking=False):
     # generate serialized input
     serialized_input = []
     serialized_input.append(config_data['tickMaximum'])
@@ -43,6 +43,13 @@ def measure_design(design_struct, config_data, command_prepend=None, command_app
     command_prepend = command_prepend or []
     command_append = command_append or []
     command = command_prepend + [exec_path] + command_append
+    if nonblocking:
+        proc = subprocess.Popen(command, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            proc.communicate(serialized_input, 0.001) # almost truly nonblocking
+        except subprocess.TimeoutExpired:
+            pass
+        return proc
     proc = subprocess.run(command, text=True, input=serialized_input, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         debug_command_text = shlex.join(map(str, command))
