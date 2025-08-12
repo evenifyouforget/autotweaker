@@ -321,11 +321,10 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
     # Iterate through the best creatures and attempt to save each one to the FC server.
     for rank_idx, creature in enumerate(creatures_to_snapshot):
         try:
-            # Construct a unique and descriptive design name, truncated to fit FC's 15-character limit.
-            # Example format: 'FC<original_design_id>-<rank>' (e.g., 'FC12345678-1')
-            design_name_base = f"FC{job.design_struct.design_id}-{rank_idx+1}"
-            if len(design_name_base) > 15:
-                design_name_base = design_name_base[:12] + "..." # Truncate and add ellipsis for clarity.
+            # Corrected: Use job.design_struct.name and job.design_struct.base_level_id for snapshot name/description
+            # Access design ID from the job itself, not the FCDesignStruct which doesn't have it directly.
+            design_id_for_snapshot_name = job.design_struct.name if job.design_struct and job.design_struct.name else str(job.design_id)
+            design_name_base = f"FC{design_id_for_snapshot_name[:8]}-{rank_idx+1}" # Truncate for display in name
 
             # Prepare the design description, including score and a "SOLVED!" text if applicable.
             # Emojis are *not* allowed here as per user's request due to old XML parser issues.
@@ -334,7 +333,8 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
             if creature.best_score is not None and creature.best_score < 0: # Assuming negative score indicates a solved design.
                 score_status_text = f"SOLVED! Score: {creature.best_score}"
 
-            description_base = f"Based on {job.design_struct.design_id}, {score_status_text}"
+            # Corrected: Refer to the design by the job's design_id, not the struct's
+            description_base = f"Based on job {job.design_id}, {score_status_text}"
             if len(description_base) > 50:
                 description_base = description_base[:47] + "..." # Truncate and add ellipsis.
 
@@ -352,7 +352,7 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
         except Exception as e:
             # Record specific errors for individual failed save operations.
             snapshot_errors.append(f"Failed to save creature {rank_idx+1}: {e}")
-            logger.error(f"Error saving creature {rank_idx+1} for design {job.design_struct.design_id}: {e}")
+            logger.error(f"Error saving creature {rank_idx+1} for design {job.design_id}: {e}")
             # Continue processing other creatures even if one fails.
     
     return saved_links, snapshot_errors
