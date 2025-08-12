@@ -22,6 +22,7 @@ import sys
 import re
 import json
 import time
+import datetime # Import datetime for timestamp conversion
 import subprocess # For running Git commands to get version info
 import logging    # Import the logging module
 from dataclasses import dataclass, field
@@ -174,10 +175,11 @@ def extract_design_id(input_string: str) -> Optional[int]:
     return None # Return None if no valid design ID could be extracted.
 
 
-def get_or_create_job(design_id: int) -> Job:
+async def get_or_create_job(design_id: int) -> Job:
     """
     Retrieves an existing `Job` object for a given Fantastic Contraption design ID.
     If no job exists for the specified ID, a new `Job` instance is created and returned.
+    This function also ensures that the `design_struct` is loaded for the job.
 
     Args:
         design_id (int): The unique integer ID of the Fantastic Contraption design.
@@ -190,7 +192,31 @@ def get_or_create_job(design_id: int) -> Job:
         jobs[design_id] = Job() # Create a new, empty `Job` instance.
     else:
         logger.info(f"Retrieving existing job for design ID: {design_id}")
-    return jobs[design_id]
+    
+    job = jobs[design_id]
+    
+    # Proactively attempt to retrieve and parse the design structure if it's not already loaded.
+    if job.design_struct is None:
+        logger.info(f"Attempting to load design structure for design ID: {design_id}")
+        try:
+            # `retrieveDesign` is a blocking I/O operation; it's run in a separate thread to avoid blocking the bot.
+            design_dom = await asyncio.to_thread(retrieveDesign, design_id)
+
+            if design_dom is None:
+                job.errors.append(f"Failed to retrieve design DOM for ID {design_id}. It might not exist or there was a network issue.")
+                logger.warning(f"Failed to retrieve design DOM for ID {design_id}. It might not exist or there was a network issue.")
+            else:
+                try:
+                    job.design_struct = designDomToStruct(design_dom)
+                    logger.info(f"Successfully loaded design structure for design ID: {design_id}")
+                except Exception as e:
+                    job.errors.append(f"Failed to parse design DOM for ID {design_id}: {e}")
+                    logger.error(f"Failed to parse design DOM for ID {design_id}: {e}")
+        except Exception as e:
+            job.errors.append(f"Error during design retrieval for ID {design_id}: {e}")
+            logger.error(f"Error during design retrieval for ID {design_id}: {e}")
+
+    return job
 
 
 # --- Core Reheating (Time Budgeting) Logic ---
@@ -217,7 +243,7 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
 
     # Check if the user has reached their maximum active job limit.
     # The current job is excluded from this count if the user is already reheating it and it's active.
-    # This prevents blocking a legitimate reheat of an already reheated job.
+    # This prevents blocking a legitimate reheat of an an already reheated job.
     if not job.is_frozen() and user_id in job.funders:
          pass # User is already reheating this active job, no new limit check needed for *this* job.
     elif current_user_reheating_jobs_count >= MAX_ACTIVE_JOBS_PER_USER:
@@ -248,10 +274,8 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     final_calculated_duration = min(calculated_duration_base, MAX_JOB_ACTIVE_TIME_SECONDS)
 
     # Determine the start time for extending the expiration:
-    # If the job is currently active and its expiration is in the future, extend from that future time.
-    # Otherwise (if expired or first funding), extend from the current time.
-    current_active_until = job.expiration_time if job.expiration_time is not None and job.expiration_time > time.time() else time.time()
-    new_expiration_time = current_active_until + final_calculated_duration
+    # IMPORTANT FIX: Reheat now always refreshes the timer from the current time.
+    new_expiration_time = time.time() + final_calculated_duration
     job.expiration_time = new_expiration_time
 
     # Reset notification flags for the new active period.
@@ -260,9 +284,9 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     job.timeout_notified_for_current_period = False
 
     # 4. Construct a Discord timestamp for user-friendly relative time display.
-    # The `<t:TIMESTAMP:R>` format dynamically displays "in 5 minutes," "2 hours ago," etc.
-    # Corrected: Pass integer timestamp directly to format_dt
-    discord_timestamp_relative = f"<t:{int(new_expiration_time)}:R>"
+    # Convert the float timestamp to a datetime object for discord.utils.format_dt.
+    new_expiration_datetime = datetime.datetime.fromtimestamp(new_expiration_time)
+    discord_timestamp_relative = discord.utils.format_dt(new_expiration_datetime, 'R')
     
     # Format the list of funder names for display in the Discord message.
     funder_names_display = ", ".join(job.funders.values())
@@ -279,7 +303,7 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
 
 # --- Snapshotting and Notification Helpers ---
 
-async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple[List[str], List[str]]:
+async def _perform_snapshot_and_get_links(design_id: int, job: Job, k_to_snapshot: int) -> Tuple[List[str], List[str]]:
     """
     Executes the snapshot logic for a given job:
     1. Authenticates with the Fantastic Contraption servers using a bot account.
@@ -287,6 +311,7 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
     3. Formats the uploaded design names and descriptions to adhere to FC server character limits.
 
     Args:
+        design_id (int): The ID of the Fantastic Contraption design associated with the job.
         job (Job): The `Job` object containing the garden and design details required for snapshotting.
         k_to_snapshot (int): The number of top-performing creatures to attempt to upload.
 
@@ -321,10 +346,9 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
     # Iterate through the best creatures and attempt to save each one to the FC server.
     for rank_idx, creature in enumerate(creatures_to_snapshot):
         try:
-            # Corrected: Use job.design_struct.name and job.design_struct.base_level_id for snapshot name/description
-            # Access design ID from the job itself, not the FCDesignStruct which doesn't have it directly.
-            design_id_for_snapshot_name = job.design_struct.name if job.design_struct and job.design_struct.name else str(job.design_id)
-            design_name_base = f"FC{design_id_for_snapshot_name[:8]}-{rank_idx+1}" # Truncate for display in name
+            # Corrected: Use job.design_struct.name (if available) or the design_id passed to the function
+            design_name_base_identifier = job.design_struct.name if job.design_struct and job.design_struct.name else str(design_id)
+            design_name_base = f"FC{design_name_base_identifier[:8]}-{rank_idx+1}" # Truncate for display in name
 
             # Prepare the design description, including score and a "SOLVED!" text if applicable.
             # Emojis are *not* allowed here as per user's request due to old XML parser issues.
@@ -333,8 +357,8 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
             if creature.best_score is not None and creature.best_score < 0: # Assuming negative score indicates a solved design.
                 score_status_text = f"SOLVED! Score: {creature.best_score}"
 
-            # Corrected: Refer to the design by the job's design_id, not the struct's
-            description_base = f"Based on job {job.design_id}, {score_status_text}"
+            # Corrected: Refer to the design by the design_id passed to the function
+            description_base = f"Based on job {design_id}, {score_status_text}"
             if len(description_base) > 50:
                 description_base = description_base[:47] + "..." # Truncate and add ellipsis.
 
@@ -343,7 +367,8 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
                 save_design, creature.design_struct, fc_user_id, name=design_name_base, description=description_base
             )
             # Construct the full URL to the newly saved design on the FC website.
-            link = f"[https://ft.jtai.dev/?designId=](https://ft.jtai.dev/?designId=){saved_design_id}"
+            # FIX: Simplified to direct URL output. Discord typically auto-embeds these.
+            link = f"https://ft.jtai.dev/?designId={saved_design_id}"
             # Display emoji in Discord message, but not in the saved design's description.
             display_solve_emoji = " 🎉" if creature.best_score is not None and creature.best_score < 0 else ""
             saved_links.append(f"{rank_idx+1}. {link} (Score: {creature.best_score}{display_solve_emoji})")
@@ -352,7 +377,7 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
         except Exception as e:
             # Record specific errors for individual failed save operations.
             snapshot_errors.append(f"Failed to save creature {rank_idx+1}: {e}")
-            logger.error(f"Error saving creature {rank_idx+1} for design {job.design_id}: {e}")
+            logger.error(f"Error saving creature {rank_idx+1} for design {design_id}: {e}")
             # Continue processing other creatures even if one fails.
     
     return saved_links, snapshot_errors
@@ -406,7 +431,8 @@ async def _send_notification(bot_instance: commands.Bot, job: Job, subscribers_d
     logger.info(f"Triggering {event_type} notification for design {design_id} to {len(subscribers_dict)} subscribers.")
 
     # Perform a snapshot. This happens regardless of whether the notification reaches Discord channels/DMs successfully.
-    snapshot_links, snapshot_errors = await _perform_snapshot_and_get_links(job, DEFAULT_SNAPSHOT_K)
+    # Corrected: Pass design_id to _perform_snapshot_and_get_links
+    snapshot_links, snapshot_errors = await _perform_snapshot_and_get_links(design_id, job, DEFAULT_SNAPSHOT_K)
 
     # Build the base notification message content.
     message_content_parts = []
@@ -416,7 +442,8 @@ async def _send_notification(bot_instance: commands.Bot, job: Job, subscribers_d
         message_content_parts.append(f"⏰ JOB TIMEOUT! ⏰ Design ID **{design_id}** has become frozen due to inactivity.")
     
     if snapshot_links:
-        message_content_parts.append("\n**Latest Snapshots:**")
+        # FIX: Message adjusted to indicate "top contenders" and clarify the snapshot.
+        message_content_parts.append(f"\n**Top {DEFAULT_SNAPSHOT_K} Contender Snapshots:** (from a sorted garden)")
         message_content_parts.extend(snapshot_links)
     if snapshot_errors:
         message_content_parts.append("\n**Snapshot Errors:**")
@@ -517,7 +544,7 @@ async def get_git_info() -> dict:
 
 # --- Discord Bot Setup ---
 
-# Define the bot's intents. Intents specify which events your bot wants to receive from Discord.
+# Define the bot's intents. Intents specifies which events your bot wants to receive from Discord.
 # It's good practice to explicitly define your intents for clarity and future-proofing.
 intents = discord.Intents.default()
 # The `message_content` intent is required for the bot to read the content of messages,
@@ -653,29 +680,18 @@ async def status(ctx: commands.Context, *, design_input: str):
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear any previous general errors for this job before generating a new status report.
 
-    # Attempt to retrieve and parse the design structure if it's not already loaded for the job.
+    # The design_struct loading is now handled by get_or_create_job.
+    # We only need to check for its presence and any errors *after* the call.
     if job.design_struct is None:
-        logger.info(f"Attempting to load design structure for design ID: {design_id}")
-        try:
-            # `retrieveDesign` is a blocking I/O operation; it's run in a separate thread to avoid blocking the bot.
-            design_dom = await asyncio.to_thread(retrieveDesign, design_id)
+        error_message = "\n**Errors during design retrieval/parsing:**\n" + "\n".join([f"- {err}" for err in job.errors])
+        await ctx.send(f"❌ Could not retrieve design structure for design ID **{design_id}**. "
+                       f"Please ensure the ID is correct and the design exists. {error_message}")
+        job.errors.clear()
+        return
 
-            if design_dom is None:
-                job.errors.append(f"Failed to retrieve design DOM for ID {design_id}. It might not exist or there was a network issue.")
-                logger.warning(f"Failed to retrieve design DOM for ID {design_id}. It might not exist or there was a network issue.")
-            else:
-                try:
-                    job.design_struct = designDomToStruct(design_dom)
-                    logger.info(f"Successfully loaded design structure for design ID: {design_id}")
-                except Exception as e:
-                    job.errors.append(f"Failed to parse design DOM for ID {design_id}: {e}")
-                    logger.error(f"Failed to parse design DOM for ID {design_id}: {e}")
-        except Exception as e:
-            job.errors.append(f"Error during design retrieval for ID {design_id}: {e}")
-            logger.error(f"Error during design retrieval for ID {design_id}: {e}")
 
     # Compile various aspects of the job's status.
     config_status = "No JSON configuration set. ⚙️"
@@ -696,11 +712,12 @@ async def status(ctx: commands.Context, *, design_input: str):
     # Status indicating whether the job is active or frozen, with a relative timestamp for expiration.
     active_time_status = "Not actively reheated (frozen by default). 🧊"
     if job.expiration_time is not None:
-        # Corrected: Pass integer timestamp directly to format_dt
+        # Convert float timestamp to datetime object for discord.utils.format_dt
+        expiration_dt = datetime.datetime.fromtimestamp(job.expiration_time)
         if job.is_frozen():
-            active_time_status = f"Frozen (expired {discord.utils.format_dt(int(job.expiration_time), 'R')}). ❄️"
+            active_time_status = f"Frozen (expired {discord.utils.format_dt(expiration_dt, 'R')}). ❄️"
         else:
-            active_time_status = f"Active until {discord.utils.format_dt(int(job.expiration_time), 'R')}. 🔥"
+            active_time_status = f"Active until {discord.utils.format_dt(expiration_dt, 'R')}. 🔥"
 
     # Display the names of users currently "reheating" (funding) the job.
     funder_names_display = "None"
@@ -793,7 +810,7 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear previous errors before attempting to set the configuration.
     parsed_json = None
 
@@ -915,7 +932,7 @@ async def get_config(ctx: commands.Context, *, design_input: str):
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear previous errors before attempting to retrieve config.
 
     if job.config_json is None:
@@ -933,7 +950,7 @@ async def get_config(ctx: commands.Context, *, design_input: str):
             f"⚙️ Here is the JSON configuration for design ID **{design_id}**:",
             file=discord.File(filename)
         )
-        os.remove(filename) # Clean up the temporary file from the local filesystem.
+        os.remove(filename); # Clean up the temporary file from the local filesystem.
         logger.info(f"JSON configuration for design ID {design_id} sent as file attachment.")
     else:
         # Send the JSON directly in the message within a markdown code block for easy viewing.
@@ -964,7 +981,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear previous errors before attempting to start the job.
 
     # Store the channel ID where this command was invoked. This channel will be used
@@ -974,7 +991,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
 
     # Check the necessary prerequisites for initializing the garden.
     if job.design_struct is None:
-        job.errors.append("Cannot start garden: Design structure not loaded. Please use `@BotName status` to load it first.")
+        job.errors.append("Cannot start garden: Design structure not loaded. This might be due to an invalid design ID or network issues during retrieval.")
         logger.warning(f"Cannot start garden for design {design_id}: Design structure not loaded.")
     if job.config_json is None:
         job.errors.append("Cannot start garden: JSON configuration not set. Please use `@BotName set_config` to set it first.")
@@ -1042,7 +1059,7 @@ async def reheat(ctx: commands.Context, *, design_input: str):
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear previous errors before processing the reheat request.
 
     # A garden must be initialized for a job to be reheated.
@@ -1062,73 +1079,68 @@ async def reheat(ctx: commands.Context, *, design_input: str):
 
 
 @bot.command()
-async def subscribe_solve(ctx: commands.Context, *, design_input: str):
+async def subscribe(ctx: commands.Context, design_input: str, *notification_types: str):
     """
-    Subscribes the invoking user to a notification that triggers when this design
-    achieves its first "solve" (negative score) within its current active period.
+    Subscribes the invoking user to specific notifications for a design job.
+    Supports multiple notification types at once.
 
     Args:
         design_input (str): The design ID or URL of the job to subscribe to.
+        notification_types (str): One or more types of notifications to subscribe to.
+                                  Currently supported: 'solve' and 'timeout'.
 
     Usage Examples:
-      `@BotName subscribe_solve 12345`
-      `@BotName subscribe_solve https://fantasticcontraption.com/?designId=12345`
+      `@BotName subscribe 12345 solve`
+      `@BotName subscribe https://fantasticcontraption.com/?designId=12345 timeout`
+      `@BotName subscribe 12345 solve timeout`
     """
     design_id = extract_design_id(design_input)
     if design_id is None:
         await ctx.send("❌ Please provide a valid design ID or link.")
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     
     # Subscription is only valid for jobs with an active garden.
     if job.garden is None:
-        logger.warning(f"Cannot subscribe to solve alerts for design {design_id}: Garden not active.")
-        await ctx.send(f"❌ Cannot subscribe to solve alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
+        logger.warning(f"Cannot subscribe to alerts for design {design_id}: Garden not active.")
+        await ctx.send(f"❌ Cannot subscribe to alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
         return
 
     user_id = ctx.author.id
     user_name = ctx.author.display_name
+    
+    successful_subscriptions = []
+    invalid_types = []
 
-    # Add the user to the solve subscribers list.
-    job.solve_subscribers[user_id] = user_name
-    logger.info(f"User {user_name} subscribed to solve alerts for design {design_id}")
-    await ctx.send(f"🔔 **{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves. ")
+    for notification_type in notification_types:
+        notification_type_lower = notification_type.lower()
 
+        if notification_type_lower == "solve":
+            job.solve_subscribers[user_id] = user_name
+            successful_subscriptions.append("solve")
+            logger.info(f"User {user_name} subscribed to solve alerts for design {design_id}")
+        elif notification_type_lower == "timeout":
+            job.timeout_subscribers[user_id] = user_name
+            successful_subscriptions.append("timeout")
+            logger.info(f"User {user_name} subscribed to timeout alerts for design {design_id}")
+        else:
+            invalid_types.append(notification_type)
+            logger.warning(f"Invalid notification type provided by {user_name}: {notification_type}")
 
-@bot.command()
-async def subscribe_timeout(ctx: commands.Context, *, design_input: str):
-    """
-    Subscribes the invoking user to a notification that triggers when this design's
-    active time runs out and the job becomes frozen.
+    response_messages = []
+    if successful_subscriptions:
+        subscriptions_list = ", ".join([f"**{sub_type}** alerts" for sub_type in successful_subscriptions])
+        response_messages.append(f"🔔 **{user_name}**, you are now subscribed to {subscriptions_list} for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when these events occur.")
+    
+    if invalid_types:
+        invalid_list = ", ".join([f"`{inv_type}`" for inv_type in invalid_types])
+        response_messages.append(f"❌ I didn't recognize the following notification type(s): {invalid_list}. Supported types are `solve` and `timeout`.")
 
-    Args:
-        design_input (str): The design ID or URL of the job to subscribe to.
-
-    Usage Examples:
-      `@BotName subscribe_timeout 12345`
-      `@BotName subscribe_timeout https://fantasticcontraption.com/?designId=12345`
-    """
-    design_id = extract_design_id(design_input)
-    if design_id is None:
-        await ctx.send("❌ Please provide a valid design ID or link.")
-        return
-
-    job = get_or_create_job(design_id)
-
-    # Subscription is only valid for jobs with an active garden.
-    if job.garden is None:
-        logger.warning(f"Cannot subscribe to timeout alerts for design {design_id}: Garden not active.")
-        await ctx.send(f"❌ Cannot subscribe to timeout alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
-        return
-
-    user_id = ctx.author.id
-    user_name = ctx.author.display_name
-
-    # Add the user to the timeout subscribers list.
-    job.timeout_subscribers[user_id] = user_name
-    logger.info(f"User {user_name} subscribed to timeout alerts for design {design_id}")
-    await ctx.send(f"⏰ **{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out. ")
+    if not response_messages:
+        await ctx.send("ℹ️ Please specify at least one valid notification type (`solve` or `timeout`) to subscribe.")
+    else:
+        await ctx.send("\n".join(response_messages))
 
 
 @bot.command()
@@ -1156,7 +1168,7 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
         )
         return
 
-    job = get_or_create_job(design_id)
+    job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear general job errors before executing the snapshot command.
 
     # Snapshotting requires an active garden.
@@ -1184,11 +1196,13 @@ async def snapshot(ctx: commands.Context, design_input: str, k: Optional[int] = 
             upload_best_k = k
 
     # Perform the snapshot operation and collect the resulting links and any errors.
-    saved_links_messages, snapshot_errors = await _perform_snapshot_and_get_links(job, upload_best_k)
+    # Corrected: Pass design_id to _perform_snapshot_and_get_links
+    saved_links_messages, snapshot_errors = await _perform_snapshot_and_get_links(design_id, job, upload_best_k)
 
     # Report the results of the snapshot to the Discord channel.
     if saved_links_messages:
-        response_message = f"✅ Successfully snapshotted {len(saved_links_messages)} designs for ID **{design_id}**:"
+        # FIX: Message adjusted to indicate "top contenders" and clarify the snapshot.
+        response_message = f"✅ Successfully snapshotted **top {len(saved_links_messages)} contender(s)** for ID **{design_id}** (from a sorted garden):"
         response_message += "\n" + "\n".join(saved_links_messages)
         await ctx.send(response_message)
         logger.info(f"Successfully snapshotted {len(saved_links_messages)} designs for ID {design_id}.")
@@ -1320,7 +1334,7 @@ async def background_loop():
     and a fair round-robin approach. It also actively monitors jobs to trigger
     solve and timeout notifications.
     """
-    await bot.wait_until_ready() # Ensure the bot is fully connected to Discord before starting the loop.
+    await bot.wait_until_ready(); # Ensure the bot is fully connected to Discord before starting the loop.
 
     global _background_loop_iteration_counter # Declare global to modify the counter.
 
