@@ -55,13 +55,19 @@ jobs:
             # Extract the score from the current line (the last field).
             score=$(echo "$line" | awk '{print $NF}')
             
-            # Check if the extracted score is less than 0 using 'bc -l' for floating-point comparison.
-            if (( $(echo "${score} < 0" | bc -l) )); then
-              echo "Found a negative score: ${score}"
-              # Set the flag to true if a negative score is found.
-              found_negative=true
-              # Exit the loop early as we only need to find one negative score.
-              break 
+            # Validate if 'score' is a valid number before attempting comparison with bc.
+            # This regex checks for an optional sign, digits, optional decimal point, and more digits.
+            if [[ "$score" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+              # Check if the extracted score is less than 0 using 'bc -l' for floating-point comparison.
+              if (( $(echo "${score} < 0" | bc -l) )); then
+                echo "Found a negative score: ${score}"
+                # Set the flag to true if a negative score is found.
+                found_negative=true
+                # Exit the loop early as we only need to find one negative score.
+                break 
+              fi
+            else
+              echo "Warning: Could not parse score from line: '$line'. Extracted value: '$score' is not a valid number."
             fi
           done
 
