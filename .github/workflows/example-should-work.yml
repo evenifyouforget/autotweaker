@@ -28,6 +28,11 @@ jobs:
           # Install SCons using pip, ensuring it's available for your build process.
           pip install scons
 
+      - name: Install JSONSchema
+        run: |
+          # Install jsonschema using pip, if your project or script requires it for validation.
+          pip install jsonschema
+
       - name: Run script and capture output
         id: run_script
         # The script's output is redirected to a file and also to stdout.
