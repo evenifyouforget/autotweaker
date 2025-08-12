@@ -5,7 +5,7 @@ This bot responds to commands when mentioned (e.g., @BotName command).
 It enables users to:
 - Start and "reheat" (fund) design evolution jobs.
 - View the status of active and frozen jobs, including time budgets and contributors.
-- Subscribe to notifications for job milestones (e.e.g., when a design solves or times out).
+- Subscribe to notifications for job milestones (e.g., when a design solves or times out).
 - Snapshot the best evolved designs by uploading them to the FC servers.
 
 Jobs are managed in memory; data will reset if the bot restarts.
@@ -261,6 +261,7 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
 
     # 4. Construct a Discord timestamp for user-friendly relative time display.
     # The `<t:TIMESTAMP:R>` format dynamically displays "in 5 minutes," "2 hours ago," etc.
+    # Corrected: Pass integer timestamp directly to format_dt
     discord_timestamp_relative = f"<t:{int(new_expiration_time)}:R>"
     
     # Format the list of funder names for display in the Discord message.
@@ -687,15 +688,19 @@ async def status(ctx: commands.Context, *, design_input: str):
 
     garden_status_text = "Not initialized. 🚫"
     if job.garden is not None:
-        garden_status_text = f"Initialized. 🌱 Creatures Processed: {job.garden.num_kills}"
+        best_score_display = "N/A"
+        if job.garden.creatures and job.garden.creatures[0].best_score is not None:
+            best_score_display = f"{job.garden.creatures[0].best_score:.2f}" # Format to 2 decimal places
+        garden_status_text = f"Initialized. 🌱 Creatures Processed: {job.garden.num_kills}, Best Score: {best_score_display}"
     
     # Status indicating whether the job is active or frozen, with a relative timestamp for expiration.
     active_time_status = "Not actively reheated (frozen by default). 🧊"
     if job.expiration_time is not None:
+        # Corrected: Pass integer timestamp directly to format_dt
         if job.is_frozen():
-            active_time_status = f"Frozen (expired {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}). ❄️"
+            active_time_status = f"Frozen (expired {discord.utils.format_dt(int(job.expiration_time), 'R')}). ❄️"
         else:
-            active_time_status = f"Active until {discord.utils.format_dt(discord.Object(int(job.expiration_time)), 'R')}. 🔥"
+            active_time_status = f"Active until {discord.utils.format_dt(int(job.expiration_time), 'R')}. 🔥"
 
     # Display the names of users currently "reheating" (funding) the job.
     funder_names_display = "None"
@@ -805,7 +810,7 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
                 logger.info(f"Parsed JSON from attachment for design ID {design_id}")
             except json.JSONDecodeError as e:
                 job.errors.append(f"Failed to parse JSON from attachment: Invalid JSON syntax: {e}")
-                logger.error(f"Failed to parse JSON from attachment: Invalid JSON syntax: {e}")
+                logger.error(f"Failed to parse JSON from attachment: {e}")
                 await ctx.send(
                     f"❌ Failed to parse JSON from attachment for design ID **{design_id}**: "
                     f"**Invalid JSON syntax.** Please ensure the file contains well-formed JSON. Error: {e}"
@@ -845,7 +850,7 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
             logger.info(f"Parsed JSON from message content for design ID {design_id}")
         except json.JSONDecodeError as e:
             job.errors.append(f"Failed to parse JSON from message content: Invalid JSON syntax: {e}")
-            logger.error(f"Failed to parse JSON from message content: Invalid JSON syntax: {e}")
+            logger.error(f"Failed to parse JSON from message content: {e}")
             await ctx.send(
                 f"❌ Failed to parse JSON from message for design ID **{design_id}**: "
                 f"**Invalid JSON syntax.** Please ensure it's valid JSON syntax. "
@@ -866,11 +871,11 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
             job.config_json = parsed_json
             logger.info(f"JSON configuration successfully set for design ID {design_id}.")
             await ctx.send(f"✅ JSON configuration successfully set for design ID **{design_id}**! ⚙️")
-        except ValidationError as e:
+        except ValidationError as e: # Catching jsonschema.ValidationError specifically
             # Catch the specific validation error and extract its message
             error_message = str(e)
             job.errors.append(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
-            logger.warning(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
+            logger.warning(f"JSON configuration for design ID {design_id} is invalid: {e}")
             await ctx.send(
                 f"❌ JSON configuration for design ID **{design_id}** is invalid. "
                 f"It doesn't conform to the **backend validation schema**.\n"
@@ -1386,7 +1391,6 @@ async def background_loop():
                     
                     # Perform a `checkup` on the garden to get its current status.
                     garden_status = job.garden.checkup()
-                    # Corrected: Removed generation from debug log
                     logger.debug(f"Garden {design_id} Checkup: Active Threads={garden_status.num_active_threads}")
 
                     # Check for Solve Notification:
