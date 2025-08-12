@@ -42,28 +42,27 @@ jobs:
           # Execute a Python command to print sys.path, which shows where Python looks for modules.
           python -c "import sys; print(sys.path)"
 
-      - name: Check for negative score
+      - name: Check for negative score or solve message
         # This step will only run if the 'run_script' step succeeded.
         if: success()
         run: |
-          # Initialize a flag to track if any negative score is found.
-          found_negative=false
+          # Initialize flags to track success conditions.
+          found_negative_score=false
+          found_solve_message=false
 
+          # 1. Check for negative score lines.
           # Use grep to find all lines matching the pattern and pipe them to a while loop.
-          # The loop processes each matching line individually.
           grep "Best score so far: " output.log | while read -r line; do
             # Extract the score from the current line (the last field).
             score=$(echo "$line" | awk '{print $NF}')
             
             # Validate if 'score' is a valid number before attempting comparison with bc.
-            # This regex checks for an optional sign, digits, optional decimal point, and more digits.
             if [[ "$score" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
               # Check if the extracted score is less than 0 using 'bc -l' for floating-point comparison.
               if (( $(echo "${score} < 0" | bc -l) )); then
                 echo "Found a negative score: ${score}"
-                # Set the flag to true if a negative score is found.
-                found_negative=true
-                # Exit the loop early as we only need to find one negative score.
+                found_negative_score=true
+                # We can break early here if we only need one negative score.
                 break 
               fi
             else
@@ -71,11 +70,19 @@ jobs:
             fi
           done
 
-          # After checking all lines, determine the job's outcome based on the flag.
-          if [ "$found_negative" = true ]; then
-            echo "Success: Negative score found, indicating solve."
+          # 2. Check for the "Stopping early since a solve was found" message.
+          # The -q flag for grep means "quiet", it exits with 0 if found, 1 if not found.
+          if grep -q "Stopping early since a solve was found" output.log; then
+            echo "Found 'Stopping early since a solve was found' message."
+            found_solve_message=true
+          fi
+
+          # After checking both conditions, determine the job's outcome.
+          # The job passes if EITHER a negative score was found OR the solve message was found.
+          if [ "$found_negative_score" = true ] || [ "$found_solve_message" = true ]; then
+            echo "Success: One of the passing conditions was met (negative score or solve message)."
           else
-            echo "Error: No negative score found. (no solve)"
-            # Exit with a non-zero status to fail the job if no negative score was found.
+            echo "Error: Neither a negative score nor the 'Stopping early' message was found. (no solve)"
+            # Exit with a non-zero status to fail the job.
             exit 1
           fi
