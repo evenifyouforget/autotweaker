@@ -64,7 +64,7 @@ It's also optimized for a single goal piece, though certain "berry" levels may a
 Before autotweaking, we configure the level with a list of waypoints.
 Each waypoint has a position and a radius.
 We expect the goal pieces to reach the waypoints in order, before finally reaching the goal.
-A goal piece is considered to have reached a waypoint when it touches the waypoint circle; therefore, if the goal piece needs to pass through an area, the waypoint should cover from wall to wall so there is no way the goal piece can skip the waypoint.
+A goal piece is considered to have reached a waypoint when its center enters the waypoint circle; therefore, if the goal piece needs to pass through an area, the waypoint should cover from wall to wall so there is no way the goal piece can skip the waypoint.
 
 ### Distance (error) calculation
 
