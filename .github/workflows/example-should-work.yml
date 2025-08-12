@@ -32,7 +32,7 @@ jobs:
         # The script's output is redirected to a file and also to stdout.
         # If this script exits with a non-zero status, this step will fail.
         run: |
-          ./example/run_example.sh -t 30 | tee output.log
+          ./example/run_example.sh -t 300 -w | tee output.log
 
       - name: Display Python module search path on script failure
         # This step will only run if the previous step ('run_script') failed.
