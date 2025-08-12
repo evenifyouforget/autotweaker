@@ -20,6 +20,9 @@ def main():
     parser_local.add_argument('-n', '--max-threads', default='auto', help='Override the max threads that will be used')
     parser_local.add_argument('-k', '--upload-best-k', type=int, default=3, help='Upload this many of the top performers')
     parser_local.add_argument('-m', '--max-garden-size', help='Override number of creatures to keep in garden')
+    parser_local.add_argument('-o', '--output-thumbnail-image', type=Path, help='We generate a thumbnail image for computer vision. With this option you can save it to a file.')
+    parser_local.add_argument('-W', '--thumbnail-width', type=int, default=260, help='Thumbnail width in pixels (default: 260)')
+    parser_local.add_argument('-H', '--thumbnail-height', type=int, default=145, help='Thumbnail height in pixels (default: 145)')
     parser_local.set_defaults(func=program_local)
 
     # Parse the arguments
