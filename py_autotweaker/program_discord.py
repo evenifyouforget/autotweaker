@@ -30,23 +30,27 @@ from .auto_login import auto_login_get_user_id # Import auto_login_get_user_id f
 # Assuming json_validate is in a file named json_validate.py in the same directory
 from .job_struct import Creature, Garden, GardenStatus # Import GardenStatus as well for checkup return
 from .json_validate import json_validate
-from .performance import get_thread_count
-# from .performance import get_thread_count # Removed: Defining stub directly here
+from .performance import get_thread_count # nontrivial library function
 
 # --- Constants & Stubs ---
 
 MAX_THREADS = get_thread_count() # Global constant for maximum threads available across all gardens
-MAX_SNAPSHOT_K = 3 # Maximum number of best creatures to snapshot and upload
-RETAIN_BEST_K = max(MAX_THREADS, MAX_SNAPSHOT_K) + 1 # Global constant for retaining best K creatures in evolution
-MAX_GARDEN_SIZE = RETAAIN_BEST_K * 3 # Global constant for the maximum garden size
+DEFAULT_SNAPSHOT_K = 3 # Default number of best creatures to snapshot and upload for notifications/command
+RETAIN_BEST_K = max(MAX_THREADS, DEFAULT_SNAPSHOT_K) + 1 # Global constant for retaining best K creatures in evolution
+MAX_GARDEN_SIZE = RETAIN_BEST_K * 3 # Global constant for the maximum garden size (Fixed typo here)
 
 # Time Credit Budgeting (Reheating) Constants
-SINGLE_USER_TIME_SECONDS = 3600  # 1 hour
-# New factor for superlinear growth: 0.5 means that for N funders, you get N * (1 + (N-1)*0.5) hours
-# E.g., 2 funders: 2 * (1 + 1*0.5) = 2 * 1.5 = 3x single user time
-# E.g., 3 funders: 3 * (1 + 2*0.5) = 3 * 2.0 = 6x single user time
-SUPERLINEAR_GROWTH_FACTOR = 0.5 
-MAX_FUNDS_TIME_SECONDS = 3 * 24 * 3600  # 3 days
+# Defines durations for N funders: Index 0 = 1 funder, Index 1 = 2 funders, etc.
+# Values are in seconds.
+# Example: 1 funder = 1 hour, 2 funders = 3 hours, 3 funders = 8 hours
+FUNDING_DURATIONS_SECONDS = (
+    3600,       # 1 hour for 1 funder
+    3600 * 4,   # for 2 funders
+    3600 * 12,
+    3600 * 36,
+    3600 * 72
+)
+MAX_FUNDS_TIME_SECONDS = 3 * 24 * 3600  # 3 days (absolute cap)
 MAX_JOBS_PER_USER = 3 # Maximum number of unfrozen jobs a single user can fund
 
 # Global counter for background loop iterations, used for round-robin prioritization
@@ -71,6 +75,14 @@ class Job:
     # Reheating/Budget fields
     expiration_time: Optional[float] = None # Unix timestamp when the job will become frozen
     funders: dict[int, str] = field(default_factory=dict) # user_id: user_name
+
+    # Notification fields
+    reporting_channel_id: Optional[int] = None # Channel ID to send notifications
+    solve_subscribers: dict[int, str] = field(default_factory=dict) # user_id: user_name
+    timeout_subscribers: dict[int, str] = field(default_factory=dict) # user_id: user_name
+    has_solved_since_last_reheat: bool = False # True if a solve notification was sent in the current funding period
+    timeout_notified_for_current_period: bool = False # True if a timeout notification was sent for current funding period
+
 
     def is_frozen(self) -> bool:
         """
@@ -136,7 +148,7 @@ def get_or_create_job(design_id: int) -> Job:
 async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, user_id: int, user_name: str) -> None:
     """
     Handles the core logic for "reheating" (funding) a job.
-    Includes per-user limits and superlinear time scaling.
+    Includes per-user limits and superlinear time scaling based on a constant table.
     """
     # 1. Check per-user job limit (only count unfrozen jobs the user funds)
     current_user_funded_jobs = 0
@@ -163,14 +175,16 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     # 2. Add current user as funder
     job.funders[user_id] = user_name
 
-    # 3. Calculate new expiration time with superlinear scaling
+    # 3. Calculate new expiration time using the FUNDING_DURATIONS_SECONDS table
     num_funders = len(job.funders)
     
-    # Calculate base duration based on number of funders
-    # New formula: guarantees linear growth and adds a superlinear component
-    # f(n) = n * f(1) * (1 + (n-1) * SUPERLINEAR_GROWTH_FACTOR)
-    calculated_duration = SINGLE_USER_TIME_SECONDS * num_funders * (1 + (num_funders - 1) * SUPERLINEAR_GROWTH_FACTOR)
-    calculated_duration = min(calculated_duration, MAX_FUNDS_TIME_SECONDS)
+    # Get duration from table, or use the last entry if num_funders exceeds table size
+    if num_funders <= len(FUNDING_DURATIONS_SECONDS):
+        calculated_duration = FUNDING_DURATIONS_SECONDS[num_funders - 1]
+    else:
+        calculated_duration = FUNDING_DURATIONS_SECONDS[-1] # Use the last defined duration for more funders
+    
+    calculated_duration = min(calculated_duration, MAX_FUNDS_TIME_SECONDS) # Apply absolute cap
 
     # The new expiration time should be from now, or from the current expiration time, whichever is later.
     # This ensures reheating extends from when it would have expired, not just from the moment of reheat.
@@ -178,6 +192,10 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     current_active_until = job.expiration_time if job.expiration_time is not None and job.expiration_time > time.time() else time.time()
     new_expiration_time = current_active_until + calculated_duration
     job.expiration_time = new_expiration_time
+
+    # Reset notification flags for the new active period
+    job.has_solved_since_last_reheat = False
+    job.timeout_notified_for_current_period = False
 
     # 4. Construct Discord timestamp for relative time display
     discord_timestamp_relative = f"<t:{int(new_expiration_time)}:R>"
@@ -190,6 +208,136 @@ async def _reheat_job_logic(ctx: commands.Context, design_id: int, job: Job, use
     )
     print(f"Design ID {design_id} reheated by {user_name} (ID: {user_id}). New expiration: {new_expiration_time} ({num_funders} funders)")
     job.errors.clear() # Clear errors on successful reheat
+
+# --- Snapshot Helper ---
+async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> tuple[list[str], list[str]]:
+    """
+    Performs the snapshot logic, saving best 'k' creatures and returning their links.
+    Returns (list of successful links, list of error messages).
+    """
+    if not job.garden or not job.garden.creatures:
+        return [], ["No garden or creatures available for snapshot."]
+
+    user_id = None
+    try:
+        user_id = await asyncio.to_thread(auto_login_get_user_id)
+    except Exception as e:
+        # Do not leak user_id in error messages
+        return [], ["Failed to auto-login to FC servers for snapshot."]
+
+    if user_id is None:
+        return [], ["Could not obtain user ID for FC servers during snapshot."]
+
+    saved_links = []
+    snapshot_errors = []
+
+    # Ensure we don't try to snapshot more creatures than are available
+    creatures_to_snapshot = job.garden.creatures[:k_to_snapshot]
+
+    for rank, creature in enumerate(creatures_to_snapshot):
+        try:
+            design_name = f"FC{job.design_struct.design_id}-{rank+1}"
+            if len(design_name) > 15: # Truncate if necessary
+                design_name = design_name[:12] + "..."
+
+            score_status = f"score {creature.best_score}"
+            emoji = ""
+            if creature.best_score is not None and creature.best_score < 0:
+                score_status = f"SOLVED! Score: {creature.best_score}"
+                emoji = " 🎉"
+
+            description = f"Based on {job.design_struct.design_id}, {score_status}{emoji}"
+            if len(description) > 50: # Truncate if necessary
+                description = description[:47] + "..."
+
+            saved_design_id = await asyncio.to_thread(
+                save_design, creature.design_struct, user_id, name=design_name, description=description
+            )
+            link = f"https://ft.jtai.dev/?designId={saved_design_id}"
+            saved_links.append(f"{rank+1}. {link} (Score: {creature.best_score}{emoji})")
+            print(f"Snapshot: {rank+1}. Saved to {link} achieving score of {creature.best_score}")
+
+        except Exception as e:
+            snapshot_errors.append(f"Failed to save creature {rank+1}: {e}")
+            print(f"Error saving creature {rank+1} for design {job.design_struct.design_id}: {e}")
+    
+    return saved_links, snapshot_errors
+
+# --- Notification Helper ---
+async def _send_notification(bot_instance: commands.Bot, job: Job, subscribers_dict: dict[int, str], event_type: str, design_id: int) -> None:
+    """
+    Sends a notification message to subscribers, attempting channel message first, then DMs.
+    Includes snapshot links if successful. Clears subscribers after sending.
+    """
+    if not subscribers_dict:
+        print(f"No subscribers for {event_type} event on design {design_id}. Skipping notification and snapshot.")
+        return
+
+    print(f"Triggering {event_type} notification for design {design_id} to {len(subscribers_dict)} subscribers.")
+
+    # Perform snapshot
+    snapshot_links, snapshot_errors = await _perform_snapshot_and_get_links(job, DEFAULT_SNAPSHOT_K)
+
+    # Build the base message
+    message_parts = []
+    if event_type == "solve":
+        message_parts.append(f"✨ DESIGN SOLVED! ✨ Design ID **{design_id}** has found a solution!")
+    elif event_type == "timeout":
+        message_parts.append(f"⏰ JOB TIMEOUT! ⏰ Design ID **{design_id}** has become frozen due to inactivity.")
+    
+    if snapshot_links:
+        message_parts.append("\n**Latest Snapshots:**")
+        message_parts.extend(snapshot_links)
+    if snapshot_errors:
+        message_parts.append("\n**Snapshot Errors:**")
+        message_parts.extend(snapshot_errors)
+    
+    base_message_content = "\n".join(message_parts)
+
+    # Try sending to the reporting channel first with pings
+    if job.reporting_channel_id:
+        channel = bot_instance.get_channel(job.reporting_channel_id)
+        if channel and isinstance(channel, discord.TextChannel):
+            all_pings = " ".join([f"<@{uid}>" for uid in subscribers_dict.keys()])
+            full_channel_message = f"{all_pings}\n{base_message_content}"
+
+            try:
+                # Attempt to send the message with all pings
+                await channel.send(full_channel_message)
+                print(f"Notification sent to channel {channel.id} for design {design_id}.")
+            except discord.HTTPException as e:
+                print(f"Failed to send full notification to channel {channel.id} for design {design_id} (error: {e}). Falling back to DMs.")
+                # Fallback to DMs if channel message fails
+                await _send_dm_notifications(bot_instance, subscribers_dict, base_message_content)
+            except Exception as e:
+                print(f"Unexpected error sending to channel {channel.id} for design {design_id}: {e}. Falling back to DMs.")
+                await _send_dm_notifications(bot_instance, subscribers_dict, base_message_content)
+        else:
+            print(f"Could not find or access reporting channel {job.reporting_channel_id} for design {design_id}. Falling back to DMs.")
+            await _send_dm_notifications(bot_instance, subscribers_dict, base_message_content)
+    else:
+        print(f"No reporting channel set for design {design_id}. Sending DMs.")
+        await _send_dm_notifications(bot_instance, subscribers_dict, base_message_content)
+
+    # Clear subscribers after notification
+    subscribers_dict.clear()
+
+
+async def _send_dm_notifications(bot_instance: commands.Bot, subscribers_dict: dict[int, str], message_content: str) -> None:
+    """
+    Sends notification messages to individual subscribers via DM.
+    """
+    for user_id, user_name in subscribers_dict.items():
+        try:
+            user = await bot_instance.fetch_user(user_id)
+            if user:
+                await user.send(f"Hey {user_name}! {message_content}")
+                print(f"Notification DM sent to {user_name} (ID: {user_id}).")
+            else:
+                print(f"Could not find user {user_name} (ID: {user_id}) to send DM notification.")
+        except Exception as e:
+            print(f"Failed to send DM notification to {user_name} (ID: {user_id}): {e}")
+
 
 # --- Discord Bot Setup ---
 
@@ -310,6 +458,18 @@ async def status(ctx, *, design_input: str):
     if job.funders:
         funder_names_display = ", ".join(job.funders.values())
 
+    solve_alert_status = "No solve subscribers."
+    if job.solve_subscribers:
+        solve_alert_status = f"{len(job.solve_subscribers)} solve subscribers."
+    if job.has_solved_since_last_reheat:
+        solve_alert_status += " (Solved this period)"
+
+    timeout_alert_status = "No timeout subscribers."
+    if job.timeout_subscribers:
+        timeout_alert_status = f"{len(job.timeout_subscribers)} timeout subscribers."
+    if job.timeout_notified_for_current_period:
+        timeout_alert_status += " (Notified of timeout this period)"
+
 
     # Report errors if any, with trimming
     error_report_lines = []
@@ -318,7 +478,8 @@ async def status(ctx, *, design_input: str):
         # Calculate base length of the main response to ensure trimming accounts for it
         base_response_length = len(
             f"Job for design ID **{design_id}** is active. "
-            f"Status: {config_status}. {design_struct_status}. {garden_status}. {frozen_status_text}. Funders: {funder_names_display}"
+            f"Status: {config_status}. {design_struct_status}. {garden_status}. {frozen_status_text}. Funders: {funder_names_display}."
+            f"Alerts: Solve ({solve_alert_status}), Timeout ({timeout_alert_status})"
         ) + len("\n**Errors:**\n") # Account for the error header and newline
 
         current_length = base_response_length
@@ -337,7 +498,8 @@ async def status(ctx, *, design_input: str):
     full_response = (
         f"Job for design ID **{design_id}** is active. "
         f"Status: {config_status}. {design_struct_status}. {garden_status}. "
-        f"Time: {frozen_status_text}. Funders: {funder_names_display}."
+        f"Time: {frozen_status_text}. Funders: {funder_names_display}.\n"
+        f"Alerts: Solve ({solve_alert_status}), Timeout ({timeout_alert_status})."
     )
     if error_report_lines:
         full_response += "\n".join(error_report_lines)
@@ -492,6 +654,10 @@ async def start_job(ctx, *, design_input: str):
     job = get_or_create_job(design_id)
     job.errors.clear() # Clear previous errors before attempting to start the job
 
+    # Store the channel ID for notifications
+    if isinstance(ctx.channel, discord.TextChannel):
+        job.reporting_channel_id = ctx.channel.id
+
     # Check prerequisites for garden initialization
     if job.design_struct is None:
         job.errors.append("Cannot start garden: Design structure not loaded. Use `@BotName status` to load it first.")
@@ -568,6 +734,66 @@ async def reheat(ctx, *, design_input: str):
     await _reheat_job_logic(ctx, design_id, job, user_id, user_name)
     job.errors.clear() # Ensure errors from _reheat_job_logic are cleared after report
 
+# New Command: subscribe_solve
+@bot.command()
+async def subscribe_solve(ctx, *, design_input: str):
+    """
+    Subscribes you to a notification when this design solves for the first time
+    in its current active period.
+
+    Usage:
+      @BotName subscribe_solve 12345
+      @BotName subscribe_solve https://fantasticcontraption.com/?designId=12345
+    """
+    design_id = extract_design_id(design_input)
+    if design_id is None:
+        await ctx.send("Please provide a valid design ID or link.")
+        return
+
+    job = get_or_create_job(design_id)
+    
+    if job.garden is None:
+        await ctx.send(f"Cannot subscribe to solve alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
+        return
+
+    user_id = ctx.author.id
+    user_name = ctx.author.display_name
+
+    job.solve_subscribers[user_id] = user_name
+    await ctx.send(f"**{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves.")
+    print(f"User {user_name} subscribed to solve alerts for design {design_id}")
+
+
+# New Command: subscribe_timeout
+@bot.command()
+async def subscribe_timeout(ctx, *, design_input: str):
+    """
+    Subscribes you to a notification when this design's active time ends
+    and it becomes frozen.
+
+    Usage:
+      @BotName subscribe_timeout 12345
+      @BotName subscribe_timeout https://fantasticcontraption.com/?designId=12345
+    """
+    design_id = extract_design_id(design_input)
+    if design_id is None:
+        await ctx.send("Please provide a valid design ID or link.")
+        return
+
+    job = get_or_create_job(design_id)
+
+    if job.garden is None:
+        await ctx.send(f"Cannot subscribe to timeout alerts for design ID **{design_id}**: Garden not active. Please use `@BotName start_job` first.")
+        return
+
+    user_id = ctx.author.id
+    user_name = ctx.author.display_name
+
+    job.timeout_subscribers[user_id] = user_name
+    await ctx.send(f"**{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out.")
+    print(f"User {user_name} subscribed to timeout alerts for design {design_id}")
+
+
 # New Command: snapshot
 @bot.command()
 async def snapshot(ctx, design_input: str, k: Optional[int] = None):
@@ -578,7 +804,7 @@ async def snapshot(ctx, design_input: str, k: Optional[int] = None):
     Usage:
       @BotName snapshot 12345 [k]
       @BotName snapshot https://fantasticcontraption.com/?designId=12345 [k]
-      'k' is optional and defaults to MAX_SNAPSHOT_K.
+      'k' is optional and defaults to DEFAULT_SNAPSHOT_K.
     """
     design_id = extract_design_id(design_input)
 
@@ -598,11 +824,11 @@ async def snapshot(ctx, design_input: str, k: Optional[int] = None):
         job.errors.clear()
         return
 
-    upload_best_k = MAX_SNAPSHOT_K # Default value
+    upload_best_k = DEFAULT_SNAPSHOT_K # Default value
     if k is not None:
-        if k > MAX_SNAPSHOT_K:
-            await ctx.send(f"Snapshot count cannot exceed {MAX_SNAPSHOT_K}. Using {MAX_SNAPSHOT_K} instead of {k}.")
-            upload_best_k = MAX_SNAPSHOT_K
+        if k > DEFAULT_SNAPSHOT_K:
+            await ctx.send(f"Snapshot count cannot exceed {DEFAULT_SNAPSHOT_K}. Using {DEFAULT_SNAPSHOT_K} instead of {k}.")
+            upload_best_k = DEFAULT_SNAPSHOT_K
         elif k <= 0:
             await ctx.send("Snapshot count must be positive. No designs will be saved.")
             job.errors.append("Invalid snapshot count provided.")
@@ -611,78 +837,15 @@ async def snapshot(ctx, design_input: str, k: Optional[int] = None):
         else:
             upload_best_k = k
 
-    if not job.garden.creatures:
-        await ctx.send(f"No creatures available in the garden for design ID **{design_id}** to snapshot.")
-        job.errors.clear()
-        return
-
-    # Attempt to get user ID for FC server login
-    user_id = None
-    try:
-        user_id = await asyncio.to_thread(auto_login_get_user_id)
-    except Exception as e:
-        # DO NOT leak user_id in error messages
-        job.errors.append("Failed to auto-login to FC servers for snapshot.")
-        await ctx.send(f"Failed to snapshot for design ID **{design_id}**: Could not log in to FC servers. (Check bot credentials)")
-        job.errors.clear()
-        return
-
-    if user_id is None: # Safeguard, though exception should catch most login issues
-        job.errors.append("Could not obtain user ID for FC servers during snapshot.")
-        await ctx.send(f"Failed to snapshot for design ID **{design_id}**: Could not obtain user ID. (Check bot credentials)")
-        job.errors.clear()
-        return
-
-    saved_links_messages = []
-    snapshot_count = 0
-    await ctx.send(f"Attempting to snapshot top {upload_best_k} designs for ID **{design_id}**...")
-
-    # Ensure we don't try to snapshot more creatures than are available
-    creatures_to_snapshot = job.garden.creatures[:upload_best_k]
-
-    for rank, creature in enumerate(creatures_to_snapshot):
-        try:
-            # Construct design name (max 15 chars)
-            # Format: FC<design_id>-<rank+1> (e.g., FC12345678-1)
-            design_name = f"FC{design_id}-{rank+1}"
-            # Ensure name fits within 15 characters, truncate if necessary
-            if len(design_name) > 15:
-                design_name = design_name[:12] + "..." # Truncate and add ellipsis
-
-            # Construct description (max 50 chars)
-            score_status = f"score {creature.best_score}"
-            emoji = ""
-            if creature.best_score is not None and creature.best_score < 0: # Assuming negative score means solve
-                score_status = f"SOLVED! Score: {creature.best_score}"
-                emoji = " 🎉" # Celebration emoji for a solve
-
-            description = f"Based on {design_id}, {score_status}{emoji}"
-            # Ensure description fits within 50 characters, truncate if necessary
-            if len(description) > 50:
-                description = description[:47] + "..." # Truncate and add ellipsis
-
-            # Call save_design which is a blocking operation, so run in a thread
-            saved_design_id = await asyncio.to_thread(
-                save_design, creature.design_struct, user_id, name=design_name, description=description
-            )
-            link = f"https://ft.jtai.dev/?designId={saved_design_id}"
-            saved_links_messages.append(f"{rank+1}. {link} (Score: {creature.best_score}{emoji})")
-            snapshot_count += 1
-            print(f"{rank+1}. Saved to {link} achieving score of {creature.best_score}")
-
-        except Exception as e:
-            job.errors.append(f"Failed to save creature {rank+1} for design ID {design_id}: {e}")
-            print(f"Error saving creature {rank+1} for design {design_id}: {e}")
-            # Do not break, try to save other creatures
+    # Perform snapshot and get links/errors
+    saved_links_messages, snapshot_errors = await _perform_snapshot_and_get_links(job, upload_best_k)
 
     if saved_links_messages:
-        response_message = f"Successfully snapshotted {snapshot_count} designs for ID **{design_id}**:"
+        response_message = f"Successfully snapshotted {len(saved_links_messages)} designs for ID **{design_id}**:"
         response_message += "\n" + "\n".join(saved_links_messages)
         await ctx.send(response_message)
     else:
-        if job.errors:
-            # Errors would have been sent immediately, but this covers if no links were generated
-            # but some errors happened.
+        if snapshot_errors:
             await ctx.send(f"Failed to snapshot any designs for ID **{design_id}**. Please check previous error messages or bot console.")
         else:
             await ctx.send(f"No designs were snapshotted for ID **{design_id}**. "
@@ -690,24 +853,20 @@ async def snapshot(ctx, design_input: str, k: Optional[int] = None):
                            f"or the specified `k` value ({upload_best_k}) was too high for the available creatures.")
     
     # Report any lingering errors from this command
-    if job.errors:
+    if snapshot_errors:
         error_report_lines = ["\n**Snapshot Errors:**"]
-        # Calculate base length dynamically, accounting for the main response already sent or planned
-        # This is a bit tricky since the main response might have been sent already.
-        # So, we'll aim for 1900 chars for this error message itself.
         current_length = len("\n**Snapshot Errors:**\n")
         
-        for i, err in enumerate(job.errors):
+        for i, err in enumerate(snapshot_errors):
             line = f"- {err}"
-            # Check if adding this line would exceed the soft limit (1900 characters)
-            if current_length + len(line) + (2 if i < len(job.errors) - 1 else 0) > 1900:
+            if current_length + len(line) + (2 if i < len(snapshot_errors) - 1 else 0) > 1900:
                 error_report_lines.append("... (more errors omitted)")
                 break
             error_report_lines.append(line)
             current_length += len(line) + 1
         await ctx.send("".join(error_report_lines))
     
-    job.errors.clear() # Clear errors after reporting them
+    job.errors.clear() # Clear general job errors after reporting (snapshot errors are from snapshot_errors list)
 
 
 # --- Background Task ---
@@ -716,6 +875,7 @@ async def background_loop():
     A continuous background task that runs while the bot is active.
     It performs garden maintenance logic for all active jobs,
     distributing thread resources based on congestion and a round-robin approach.
+    It also checks for and triggers solve and timeout notifications.
     """
     await bot.wait_until_ready() # Ensure the bot is fully ready before starting the loop
 
@@ -723,11 +883,21 @@ async def background_loop():
 
     while not bot.is_closed():
         _background_loop_iteration_counter += 1
-        print(f"Background loop running (Iteration {_background_loop_iteration_counter}) - performing garden maintenance...")
+        print(f"Background loop running (Iteration {_background_loop_iteration_counter}) - performing garden maintenance and checking notifications...")
         
-        # 1. Identify eligible jobs (have a garden and are not frozen)
+        # 1. Identify eligible jobs (have a garden and are not frozen) and check for notifications
         eligible_jobs_list = []
-        for design_id, job in jobs.items():
+        for design_id, job in list(jobs.items()): # Iterate over a copy to avoid modification issues
+            # Check for Timeout Notification
+            if job.garden is not None and job.is_frozen() and job.expiration_time is not None and not job.timeout_notified_for_current_period:
+                if job.timeout_subscribers:
+                    print(f"Triggering timeout notification for design ID: {design_id}")
+                    # Need a Context-like object to send messages from background loop.
+                    # For simplicity, we'll try to get the reporting channel directly or DM.
+                    await _send_notification(bot, job, job.timeout_subscribers, "timeout", design_id)
+                job.timeout_notified_for_current_period = True # Mark as notified
+
+            # Add to eligible jobs list if not frozen (even after potential timeout notification)
             if job.garden is not None and not job.is_frozen():
                 eligible_jobs_list.append((design_id, job))
 
@@ -762,7 +932,7 @@ async def background_loop():
         
         # 3. Perform maintenance for all eligible gardens based on allocated threads
         for design_id, job in list(jobs.items()): # Iterate over all jobs again (copy)
-            if job.garden is not None and not job.is_frozen():
+            if job.garden is not None and not job.is_frozen(): # Re-check is_frozen in case it changed between list creation and now
                 try:
                     # Get the number of threads allocated to this specific job in this iteration
                     allocated_threads_for_this_job = threads_to_allocate_per_job.get(design_id, 0)
@@ -770,6 +940,15 @@ async def background_loop():
                     # Perform garden checkup
                     garden_status = job.garden.checkup()
                     print(f"Garden {design_id} Checkup: Active Threads={garden_status.num_active_threads}, Generation={garden_status.generation}")
+
+                    # Check for Solve Notification
+                    # Check if the best creature has a negative score (assuming 0 is neutral/unsolved, <0 is solved)
+                    if job.garden.creatures and job.garden.creatures[0].best_score is not None and \
+                       job.garden.creatures[0].best_score < 0 and not job.has_solved_since_last_reheat:
+                        if job.solve_subscribers:
+                            print(f"Triggering solve notification for design ID: {design_id}")
+                            await _send_notification(bot, job, job.solve_subscribers, "solve", design_id)
+                        job.has_solved_since_last_reheat = True # Mark as notified for this solve
 
                     # Perform garden evolution. Note: As per instructions, evolve still uses global MAX_THREADS.
                     job.garden.evolve(MAX_THREADS, RETAIN_BEST_K)
@@ -793,9 +972,8 @@ async def background_loop():
             elif job.garden is None:
                 # This print statement informs about jobs without an initialized garden
                 print(f"Design ID {design_id} has no active garden to maintain.")
-            elif job.is_frozen():
-                # This print statement informs about frozen gardens being skipped
-                print(f"Garden for design ID {design_id} is FROZEN. Skipping maintenance.")
+            # If job.is_frozen() then it was handled at the top of the loop or explicitly by a command.
+            # No need for an 'elif job.is_frozen():' here as it's already filtered.
 
         # Avoid busy loop
         # Real benchmark - example job finished in about 5 seconds
