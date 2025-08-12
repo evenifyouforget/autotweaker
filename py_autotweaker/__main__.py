@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from .program_discord import program_discord
 from .program_local import program_local
 
 def main():
@@ -24,6 +25,10 @@ def main():
     parser_local.add_argument('-W', '--thumbnail-width', type=int, default=200, help='Thumbnail width in pixels (default: 200)')
     parser_local.add_argument('-H', '--thumbnail-height', type=int, default=145, help='Thumbnail height in pixels (default: 145)')
     parser_local.set_defaults(func=program_local)
+
+    # Create the parser for the "local" sub-command
+    parser_discord = subparsers.add_parser('discord', help='Start up the Discord bot and run forever')
+    parser_discord.set_defaults(func=program_discord)
 
     # Parse the arguments
     args = parser.parse_args()

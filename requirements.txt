@@ -1,0 +1,6 @@
+discord
+jsonschema
+numpy
+pillow
+requests
+scons
