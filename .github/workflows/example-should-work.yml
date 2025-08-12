@@ -23,16 +23,30 @@ jobs:
 
       - name: Check for negative score
         run: |
-          # The `grep` command searches for the pattern "Best score so far: "
-          # The output is then piped to `awk` to extract the number
-          # The number is assigned to the `score` variable
-          score=$(grep "Best score so far: " output.log | awk '{print $NF}')
-          
-          # This if-statement checks if the extracted score is less than 0
-          # If it's not, the workflow will fail with an error message
-          if (( $(echo "${score} < 0" | bc -l) )); then
-            echo "Success: The score is negative."
+          # Initialize a flag to track if any negative score is found
+          found_negative=false
+
+          # Use grep to find all lines matching the pattern and pipe them to a while loop
+          # The loop processes each matching line individually
+          grep "Best score so far: " output.log | while read -r line; do
+            # Extract the score from the current line (the last field)
+            score=$(echo "$line" | awk '{print $NF}')
+            
+            # Check if the extracted score is less than 0 using 'bc -l' for floating-point comparison
+            if (( $(echo "${score} < 0" | bc -l) )); then
+              echo "Found a negative score: ${score}"
+              # Set the flag to true if a negative score is found
+              found_negative=true
+              # Exit the loop early as we only need to find one negative score
+              break 
+            fi
+          done
+
+          # After checking all lines, determine the job's outcome based on the flag
+          if [ "$found_negative" = true ]; then
+            echo "Success: Negative score found, indicating solve."
           else
-            echo "Error: The score is not negative. Found score: ${score}"
+            echo "Error: No negative score found. (no solve)"
+            # Exit with a non-zero status to fail the job if no negative score was found
             exit 1
           fi
