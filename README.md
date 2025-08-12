@@ -86,3 +86,17 @@ The goal area center is implicitly the last checkpoint.
 Due to triangle math, there is implicitly a small bonus for reaching each checkpoint.
 
 These conventions also mean that a negative score means a solve.
+
+## Development
+
+Install some dependencies first:
+
+```py
+pip install scons jsonschema requests
+```
+
+### Run the example job
+
+```sh
+./example/run_example.sh
+```
