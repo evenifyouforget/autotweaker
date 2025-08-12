@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Autotweaker Job Configuration",
+  "description": "Configuration for a single design autotweaker job. The performance depends on setting these correctly!",
+  "type": "object",
+  "properties": {
+    "waypoints": {
+      "type": "array",
+      "description": "The list of waypoints every goal piece must pass through, in order.",
+      "items": {
+        "type": "object",
+        "description": "A single waypoint with X and Y coordinates and a radius.",
+        "properties": {
+          "x": {
+            "type": "number",
+            "description": "The X coordinate of the waypoint."
+          },
+          "y": {
+            "type": "number",
+            "description": "The Y coordinate of the waypoint."
+          },
+          "radius": {
+            "type": "number",
+            "description": "The radius around the waypoint. How close a goal piece needs to be to be considered to have reached the waypoint.",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "radius"
+        ]
+      },
+      "minItems": 0,
+      "uniqueItems": false
+    },
+    "tickMinimum": {
+      "type": "integer",
+      "description": "The minimum number of ticks a backend run will execute for. Useful for designs with a slow start.",
+      "minimum": 0
+    },
+    "tickMaximum": {
+      "type": "integer",
+      "description": "The maximum number of ticks a backend run will execute for. Useful for designs with a known end time.",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "waypoints"
+  ],
+  "additionalProperties": false
+}

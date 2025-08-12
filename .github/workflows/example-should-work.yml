@@ -1,0 +1,88 @@
+name: Run the example job (half to end, no online save)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  run_script_and_check_score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # This is crucial for initializing any Git submodules, like 'ftlib'.
+          submodules: true 
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use the latest Python 3 version available
+
+      - name: Install SCons and other dependencies with pip
+        run: |
+          pip install scons jsonschema requests
+
+      - name: Run script and capture output
+        id: run_script
+        # The script's output is redirected to a file and also to stdout.
+        # If this script exits with a non-zero status, this step will fail.
+        run: |
+          ./example/run_example.sh -t 300 -w | tee output.log
+
+      - name: Display Python module search path on script failure
+        # This step will only run if the previous step ('run_script') failed.
+        if: failure()
+        run: |
+          echo "The 'run_example.sh' script failed. Displaying Python module search path:"
+          # Execute a Python command to print sys.path, which shows where Python looks for modules.
+          python -c "import sys; print(sys.path)"
+
+      - name: Check for negative score or solve message
+        # This step will only run if the 'run_script' step succeeded.
+        if: success()
+        run: |
+          # Initialize flags to track success conditions.
+          found_negative_score=false
+          found_solve_message=false
+
+          # 1. Check for negative score lines.
+          # Use grep to find all lines matching the pattern and pipe them to a while loop.
+          grep "Best score so far: " output.log | while read -r line; do
+            # Extract the score from the current line (the last field).
+            score=$(echo "$line" | awk '{print $NF}')
+            
+            # Validate if 'score' is a valid number before attempting comparison with bc.
+            if [[ "$score" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+              # Check if the extracted score is less than 0 using 'bc -l' for floating-point comparison.
+              if (( $(echo "${score} < 0" | bc -l) )); then
+                echo "Found a negative score: ${score}"
+                found_negative_score=true
+                # We can break early here if we only need one negative score.
+                break 
+              fi
+            else
+              echo "Warning: Could not parse score from line: '$line'. Extracted value: '$score' is not a valid number."
+            fi
+          done
+
+          # 2. Check for the "Stopping early since a solve was found" message.
+          # The -q flag for grep means "quiet", it exits with 0 if found, 1 if not found.
+          if grep -q "Stopping early since a solve was found" output.log; then
+            echo "Found 'Stopping early since a solve was found' message."
+            found_solve_message=true
+          fi
+
+          # After checking both conditions, determine the job's outcome.
+          # The job passes if EITHER a negative score was found OR the solve message was found.
+          if [ "$found_negative_score" = true ] || [ "$found_solve_message" = true ]; then
+            echo "Success: One of the passing conditions was met (negative score or solve message)."
+          else
+            echo "Error: Neither a negative score nor the 'Stopping early' message was found. (no solve)"
+            # Exit with a non-zero status to fail the job.
+            exit 1
+          fi
