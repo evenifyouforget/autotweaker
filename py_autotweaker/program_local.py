@@ -2,6 +2,7 @@ import itertools
 import json
 from jsonschema import validate
 from pathlib import Path
+import pickle
 import time
 from get_design import retrieveDesign, designDomToStruct
 from save_design import save_design
@@ -76,8 +77,21 @@ def program_local(args):
         except KeyboardInterrupt:
             print('Stopping early due to user interrupt')
 
-        # Save results
-        print(f'Uploading up to {upload_best_k} best creatures')
-        for rank, creature in enumerate(garden.creatures[:upload_best_k]):
-            saved_design_id = save_design(creature.design_struct, user_id, name=f'Auto {rank+1}', description=f'Based on {args.design_id}, score {creature.best_score}')
-            print(f'{rank+1}. Saved to https://ft.jtai.dev/?designId={saved_design_id} achieving score of {creature.best_score}')
+        # Save results locally
+        print('Making local quicksave')
+        quicksave_dir = Path(__file__).parent / '.quicksave'
+        quicksave_dir.mkdir(parents=True, exist_ok=True)
+        for rank, creature in enumerate(garden.creatures):
+            quicksave_path = quicksave_dir / f'{args.design_id}_{rank}.pickle'
+            with open(quicksave_path, 'wb') as file:
+                pickle.dump(creature.design_struct, file, pickle.HIGHEST_PROTOCOL)
+            print(f'{rank+1}. Saved to {quicksave_path} achieving score of {creature.best_score}')
+        
+        # Save results online
+        if not user_id:
+            print('Skipping upload due to user_id not being set')
+        else:
+            print(f'Uploading up to {upload_best_k} best creatures')
+            for rank, creature in enumerate(garden.creatures[:upload_best_k]):
+                saved_design_id = save_design(creature.design_struct, user_id, name=f'Auto {rank+1}', description=f'Based on {args.design_id}, score {creature.best_score}')
+                print(f'{rank+1}. Saved to https://ft.jtai.dev/?designId={saved_design_id} achieving score of {creature.best_score}')

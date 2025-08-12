@@ -108,3 +108,6 @@ mlruns/ # MLflow logs
 .claude/
 copilot_logs/
 claude_logs/
+
+# autotweaker quicksaves
+.quicksave
