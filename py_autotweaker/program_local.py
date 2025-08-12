@@ -64,12 +64,12 @@ def program_local(args):
                 time_elapsed = time.time() - start_time
                 loop_print(f'# Loop #{loop_count + 1} begins, total time {time_elapsed:.2f} seconds since start, using {max_threads} threads and {max_garden_size} creatures')
                 if time_elapsed > timeout_seconds:
-                    loop_print(f'Stopping due to time limit reached ({timeout_seconds} seconds)')
+                    print(f'Stopping due to time limit reached ({timeout_seconds} seconds)')
                     break
                 garden_status = garden.checkup()
                 loop_print(f'Best score so far: {garden_status.best_score}')
                 if stop_on_win and garden_status.best_score <= 0:
-                    loop_print('Stopping early since a solve was found')
+                    print('Stopping early since a solve was found')
                     break
                 garden.evolve(max_threads, upload_best_k)
                 garden.start(max_threads - garden_status.num_active_threads)
