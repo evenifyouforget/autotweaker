@@ -792,6 +792,7 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
     Sets the JSON configuration for a specific design job.
     The JSON content can be provided directly within the message (preferably wrapped
     in a `json` markdown code block) or uploaded as a `.json` file attachment.
+    Once a job has started (its garden is initialized), its configuration cannot be changed.
 
     Args:
         design_input (str): The design ID or URL for which to set the configuration.
@@ -812,6 +813,14 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
 
     job = await get_or_create_job(design_id) # Call get_or_create_job (now async)
     job.errors.clear() # Clear previous errors before attempting to set the configuration.
+    
+    # Check if the job's garden is already initialized. If so, prevent configuration changes.
+    if job.garden is not None:
+        await ctx.send(f"❌ The JSON configuration for design ID **{design_id}** cannot be changed because the job has already started. "
+                       f"Configuration can only be set before a job begins.")
+        logger.warning(f"Attempted to change JSON config for active job {design_id} by {ctx.author.display_name}. Blocked.")
+        return
+
     parsed_json = None
 
     # Prioritize checking for a JSON file attachment.
