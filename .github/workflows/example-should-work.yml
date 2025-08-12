@@ -18,6 +18,16 @@ jobs:
           # This is crucial for initializing any Git submodules, like 'ftlib'.
           submodules: true 
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use the latest Python 3 version available
+
+      - name: Install SCons
+        run: |
+          # Install SCons using pip, ensuring it's available for your build process.
+          pip install scons
+
       - name: Run script and capture output
         id: run_script
         # The script's output is redirected to a file and also to stdout.
