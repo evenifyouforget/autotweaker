@@ -12,7 +12,7 @@ Jobs are managed in memory; data will reset if the bot restarts.
 Thread resource allocation for active jobs is dynamically managed based on congestion
 and a round-robin priority system.
 
-Requires Python 3.8 or higher.
+Requires Python 3.9 or higher. # Updated requirement
 """
 
 # --- Standard Library Imports ---
@@ -142,7 +142,7 @@ def extract_design_id(input_string: str) -> Optional[int]:
     The input can be either a direct integer ID or a URL containing 'designId=<number>'.
 
     Args:
-        input_string (str): The string to parse (e.g., "12345" or "https://ft.jtai.dev/?designId=12707044").
+        input_string (str): The string to parse (e.g., "12345" or "[https://ft.jtai.dev/?designId=12707044](https://ft.jtai.dev/?designId=12707044)").
 
     Returns:
         int | None: The extracted design ID as an integer, or None if no valid ID is found.
@@ -330,7 +330,7 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
                 save_design, creature.design_struct, fc_user_id, name=design_name_base, description=description_base
             )
             # Construct the full URL to the newly saved design on the FC website.
-            link = f"https://ft.jtai.dev/?designId={saved_design_id}"
+            link = f"[https://ft.jtai.dev/?designId=](https://ft.jtai.dev/?designId=){saved_design_id}"
             saved_links.append(f"{rank_idx+1}. {link} (Score: {creature.best_score}{solve_emoji})")
             print(f"Snapshot: {rank_idx+1}. Saved to {link} achieving score of {creature.best_score}")
 
@@ -557,7 +557,7 @@ async def status(ctx: commands.Context, *, design_input: str):
 
     Args:
         design_input (str): The design ID (e.g., "12345") or a full Fantastic Contraption URL
-                            (e.g., "https://fantasticcontraption.com/original/?designId=12668445").
+                            (e.g., "[https://ft.jtai.dev/?designId=12668445](https://ft.jtai.dev/?designId=12668445)").
 
     Usage Examples:
       `@BotName status 12345`
@@ -707,37 +707,56 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
     # Prioritize checking for a JSON file attachment.
     if ctx.message.attachments:
         attachment = ctx.message.attachments[0]
-        if attachment.content_type == 'application/json':
+        # Be more permissive with content types for JSON files.
+        # Accept 'application/json' or 'text/plain' if the filename ends with '.json'.
+        if attachment.content_type == 'application/json' or \
+           (attachment.content_type == 'text/plain' and attachment.filename.lower().endswith('.json')):
             try:
                 json_bytes = await attachment.read()
                 parsed_json = json.loads(json_bytes.decode('utf-8'))
                 print(f"Parsed JSON from attachment for design ID {design_id}")
             except json.JSONDecodeError as e:
-                job.errors.append(f"Failed to parse JSON from attachment: {e}")
-                await ctx.send(f"Failed to parse JSON from attachment: {e}")
+                job.errors.append(f"Failed to parse JSON from attachment: Invalid JSON syntax: {e}")
+                await ctx.send(
+                    f"Failed to parse JSON from attachment for design ID **{design_id}**: "
+                    f"**Invalid JSON syntax.** Please ensure the file contains well-formed JSON. Error: {e}"
+                )
                 return
             except Exception as e:
                 job.errors.append(f"An unexpected error occurred while reading the attachment: {e}")
                 await ctx.send(f"An unexpected error occurred while reading the attachment: {e}")
                 return
         else:
-            await ctx.send("The attached file is not a JSON file (`.json` content type). Please attach a valid JSON file.")
+            await ctx.send(
+                f"The attached file is not a recognized JSON file type. "
+                f"Expected `application/json` or a `.json` file with `text/plain` type. "
+                f"Detected type: `{attachment.content_type}`, filename: `{attachment.filename}`."
+            )
             return
     # If no attachment, check for JSON content directly in the message.
     elif json_content:
         # Attempt to extract JSON from a markdown code block (e.g., ````json\n...\n````).
         json_match = re.search(r'```json\n(.*)```', json_content, re.DOTALL)
+        json_string_to_parse = ""
+
         if json_match:
-            json_string = json_match.group(1)
+            # If a markdown block is found, take its content and strip any surrounding whitespace.
+            json_string_to_parse = json_match.group(1).strip()
         else:
-            json_string = json_content # Assume plain JSON string if no markdown block is found.
+            # If no markdown block, assume the entire content is JSON and strip whitespace.
+            # This is key for allowing direct paste of JSON without a code block, but makes parsing more sensitive.
+            json_string_to_parse = json_content.strip()
 
         try:
-            parsed_json = json.loads(json_string)
+            parsed_json = json.loads(json_string_to_parse)
             print(f"Parsed JSON from message content for design ID {design_id}")
         except json.JSONDecodeError as e:
-            job.errors.append(f"Failed to parse JSON from message content: {e}")
-            await ctx.send(f"Failed to parse JSON from message content: {e}")
+            job.errors.append(f"Failed to parse JSON from message content: Invalid JSON syntax: {e}")
+            await ctx.send(
+                f"Failed to parse JSON from message for design ID **{design_id}**: "
+                f"**Invalid JSON syntax.** Please ensure it's valid JSON syntax. "
+                f"Wrapping it in a ````json\n...\n``` ` block is highly recommended for best results. Error: {e}"
+            )
             return
     else:
         await ctx.send(
@@ -750,11 +769,16 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
         # Validate the parsed JSON using the external `json_validate` function.
         if json_validate(parsed_json):
             job.config_json = parsed_json
-            await ctx.send(f"JSON configuration successfully set for design ID **{design_id}**.")
+            await ctx.send(f"JSON configuration successfully set for design ID **{design_id}**! ✅")
         else:
-            job.errors.append(f"JSON configuration for design ID {design_id} is invalid according to validation rules.")
-            await ctx.send(f"JSON configuration for design ID **{design_id}** is invalid according to validation rules. Please check the format.")
+            job.errors.append(f"JSON configuration for design ID {design_id} is invalid according to backend schema validation rules.")
+            await ctx.send(
+                f"JSON configuration for design ID **{design_id}** is invalid. "
+                f"It doesn't conform to the **backend validation schema**. "
+                f"Please review the expected JSON structure for this configuration."
+            )
     else:
+        # This case should ideally not be reached if previous checks work.
         await ctx.send(f"No valid JSON content was found to set for design ID **{design_id}**.")
 
 
@@ -861,7 +885,7 @@ async def start_job(ctx: commands.Context, *, design_input: str):
         # Initialize the Garden object. This typically involves creating initial creatures
         # based on the design structure and configuration.
         job.garden = Garden([Creature(job.design_struct)], MAX_GARDEN_SIZE, job.config_json)
-        await ctx.send(f"Garden successfully initialized for design ID **{design_id}**!")
+        await ctx.send(f"Garden successfully initialized for design ID **{design_id}**! 🎉")
         print(f"Garden initialized for design ID {design_id}")
 
         # Automatically "reheat" (fund) the job for the user who initiated it,
@@ -950,7 +974,7 @@ async def subscribe_solve(ctx: commands.Context, *, design_input: str):
 
     # Add the user to the solve subscribers list.
     job.solve_subscribers[user_id] = user_name
-    await ctx.send(f"**{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves.")
+    await ctx.send(f"**{user_name}**, you are now subscribed to solve alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it solves. 🔔")
     print(f"User {user_name} subscribed to solve alerts for design {design_id}")
 
 
@@ -984,7 +1008,7 @@ async def subscribe_timeout(ctx: commands.Context, *, design_input: str):
 
     # Add the user to the timeout subscribers list.
     job.timeout_subscribers[user_id] = user_name
-    await ctx.send(f"**{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out.")
+    await ctx.send(f"**{user_name}**, you are now subscribed to timeout alerts for design ID **{design_id}**! I'll ping you here (or DM you if I can't) when it times out. 🔔")
     print(f"User {user_name} subscribed to timeout alerts for design {design_id}")
 
 
@@ -1101,7 +1125,7 @@ async def stats(ctx: commands.Context):
     current_active_funders = set()
 
     total_garden_generations = 0
-    total_creatures_processed = 0 # New: To track total num_kills
+    total_creatures_processed = 0 # To track total num_kills across all active gardens
     active_gardens_count = 0
     highest_generation = 0
     
