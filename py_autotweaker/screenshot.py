@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import warnings
 from typing import Tuple
 from get_design import FCDesignStruct, FCPieceStruct
 
@@ -23,12 +24,33 @@ def screenshot_design(design: FCDesignStruct, image_dimensions: Tuple[int, int],
     """
     width, height = image_dimensions
     
+    # Check for severely deformed aspect ratios
+    world_width = WORLD_MAX_X - WORLD_MIN_X
+    world_height = WORLD_MAX_Y - WORLD_MIN_Y
+    world_aspect_ratio = world_width / world_height
+    
+    # Calculate corrected dimensions
+    corrected_width_for_height = int(height * world_aspect_ratio + 0.5)
+    corrected_height_for_width = int(width / world_aspect_ratio + 0.5)
+    
+    # Check if aspect ratio is off by more than a few pixels
+    width_diff = abs(width - corrected_width_for_height)
+    height_diff = abs(height - corrected_height_for_width)
+    
+    # Warn if it is off by 1 pixel in both ways (likely a mistake)
+    if width_diff > 1 and height_diff > 1:
+        warnings.warn(
+            f"Image dimensions {width}x{height} have inaccurate aspect ratio. "
+            f"World aspect ratio is {world_aspect_ratio:.3f}. "
+            f"For height {height}, recommended width is {corrected_width_for_height}. "
+            f"For width {width}, recommended height is {corrected_height_for_width}.",
+            UserWarning
+        )
+    
     # Initialize image with background color (0)
     image = np.zeros((height, width), dtype=np.uint8)
     
     # Calculate world-to-pixel transformation
-    world_width = WORLD_MAX_X - WORLD_MIN_X
-    world_height = WORLD_MAX_Y - WORLD_MIN_Y
     scale_x = width / world_width
     scale_y = height / world_height
     
