@@ -30,6 +30,10 @@ from typing import Optional, List, Tuple, Union
 # --- Third-Party Library Imports ---
 import discord
 from discord.ext import commands
+# Assuming jsonschema is installed and ValidationError is directly importable from it.
+# If json_validate wraps this in its own exception or a generic Exception,
+# you might adjust this import or the try-except block accordingly.
+from jsonschema import ValidationError 
 
 # --- Local Module Imports (Assumed to be in the same package/directory) ---
 # These modules are essential for the bot's functionality:
@@ -324,15 +328,14 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
             if len(design_name_base) > 15:
                 design_name_base = design_name_base[:12] + "..." # Truncate and add ellipsis for clarity.
 
-            # Prepare the design description, including score and a "SOLVED!" emoji if applicable.
+            # Prepare the design description, including score and a "SOLVED!" text if applicable.
+            # Emojis are *not* allowed here as per user's request due to old XML parser issues.
             # Truncate to fit FC's 50-character limit.
             score_status_text = f"score {creature.best_score}"
-            solve_emoji = ""
             if creature.best_score is not None and creature.best_score < 0: # Assuming negative score indicates a solved design.
                 score_status_text = f"SOLVED! Score: {creature.best_score}"
-                solve_emoji = " 🎉" # Add a celebration emoji for a solved design.
 
-            description_base = f"Based on {job.design_struct.design_id}, {score_status_text}{solve_emoji}"
+            description_base = f"Based on {job.design_struct.design_id}, {score_status_text}"
             if len(description_base) > 50:
                 description_base = description_base[:47] + "..." # Truncate and add ellipsis.
 
@@ -342,7 +345,9 @@ async def _perform_snapshot_and_get_links(job: Job, k_to_snapshot: int) -> Tuple
             )
             # Construct the full URL to the newly saved design on the FC website.
             link = f"[https://ft.jtai.dev/?designId=](https://ft.jtai.dev/?designId=){saved_design_id}"
-            saved_links.append(f"{rank_idx+1}. {link} (Score: {creature.best_score}{solve_emoji})")
+            # Display emoji in Discord message, but not in the saved design's description.
+            display_solve_emoji = " 🎉" if creature.best_score is not None and creature.best_score < 0 else ""
+            saved_links.append(f"{rank_idx+1}. {link} (Score: {creature.best_score}{display_solve_emoji})")
             logger.info(f"Snapshot: {rank_idx+1}. Saved to {link} achieving score of {creature.best_score}")
 
         except Exception as e:
@@ -858,14 +863,14 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
 
     if parsed_json:
         # Validate the parsed JSON using the external `json_validate` function.
-        validation_result: Union[bool, str] = json_validate(parsed_json) # Expecting True or an error string
-        if validation_result is True:
+        try:
+            json_validate(parsed_json) # This function is expected to raise ValidationError on failure
             job.config_json = parsed_json
             logger.info(f"JSON configuration successfully set for design ID {design_id}.")
             await ctx.send(f"✅ JSON configuration successfully set for design ID **{design_id}**! ⚙️")
-        else:
-            # If validation_result is not True, it's expected to be the error string from jsonschema
-            error_message = str(validation_result) # Ensure it's treated as a string
+        except ValidationError as e:
+            # Catch the specific validation error and extract its message
+            error_message = str(e)
             job.errors.append(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
             logger.warning(f"JSON configuration for design ID {design_id} is invalid: {error_message}")
             await ctx.send(
@@ -874,6 +879,11 @@ async def set_config(ctx: commands.Context, design_input: str, *, json_content: 
                 f"**Validation Error Details:** ```\n{error_message}\n```"
                 f"Please review the expected JSON structure for this configuration."
             )
+        except Exception as e:
+            # Catch any other unexpected errors during validation
+            job.errors.append(f"An unexpected error occurred during JSON validation for design ID {design_id}: {e}")
+            logger.error(f"An unexpected error occurred during JSON validation for design ID {design_id}: {e}")
+            await ctx.send(f"❌ An unexpected error occurred during JSON validation for design ID **{design_id}**: {e}")
     else:
         # This case should ideally not be reached if previous checks work.
         logger.error(f"No valid JSON content was found to set for design ID {design_id}. This indicates an unexpected state.")
