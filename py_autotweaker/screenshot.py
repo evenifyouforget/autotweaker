@@ -1,15 +1,7 @@
 import numpy as np
 import math
 from typing import Tuple
-
-# Import types - these will be available when called from the main program
-# which sets up the import path correctly
-try:
-    from get_design import FCDesignStruct, FCPieceStruct
-except ImportError:
-    # For type hints when not running from main program
-    FCDesignStruct = None
-    FCPieceStruct = None
+from get_design import FCDesignStruct, FCPieceStruct
 
 # World bounds from fcsim source
 WORLD_MIN_X = -2000
