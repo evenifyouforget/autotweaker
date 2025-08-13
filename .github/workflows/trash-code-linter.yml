@@ -1,5 +1,5 @@
 # .github/workflows/conservative-lint.yml
-name: Lint, but flag trash code only
+name: Conservative Linter
 
 on:
   push:
@@ -48,8 +48,8 @@ jobs:
         flake8 . \
           --max-line-length=120 \
           --ignore=E501,W503,E203,E701,E702,E703,E704,E711,E712,E722,W605,F401,F841 \
-          --exclude=.git,__pycache__,build,dist || true # Using || true to allow other linters to run even if this fails initially.
-                                                     # For a 'sanity check', you might remove || true once you're comfortable.
+          --exclude=.git,__pycache__,build,dist
+      continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Cpplint (C++)
       # cpplint is configured to be very conservative.
@@ -75,7 +75,8 @@ jobs:
 -naming/enum,\
 -naming/function,\
 -naming/variable \
-            -- || true # Using || true to allow other linters to run even if this fails initially.
+            --
+      continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Shellcheck (Bash)
       # Shellcheck is generally conservative by default, focusing on syntax errors,
@@ -83,7 +84,8 @@ jobs:
       # It's a good tool for catching "horrendous" bash issues.
       run: |
         echo "Running Shellcheck for Bash files..."
-        find . -name "*.sh" -o -name "*.bash" | xargs shellcheck || true # Using || true to allow other linters to run even if this fails initially.
+        find . -name "*.sh" -o -name "*.bash" | xargs shellcheck
+      continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Markdownlint (Markdown)
       # Markdownlint is configured to ignore most stylistic rules (like line length,
@@ -93,11 +95,13 @@ jobs:
         echo "Running Markdownlint for Markdown files..."
         markdownlint \
           --disable MD013,MD033,MD040,MD007,MD009,MD024,MD026,MD029,MD030,MD031,MD032,MD034,MD036,MD037,MD038,MD039,MD041,MD043,MD044,MD046,MD047 \
-          $(find . -name "*.md") || true # Using || true to allow other linters to run even if this fails initially.
+          $(find . -name "*.md")
+      continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run JSON Lint (JSON)
       # jsonlint checks for valid JSON syntax, which is a fundamental "sanity check"
       # for your JSON files. It will fail if the JSON is malformed.
       run: |
         echo "Running JSON Lint for JSON files..."
-        find . -name "*.json" | xargs -r jsonlint -q || true # Using || true to allow other linters to run even if this fails initially.
+        find . -name "*.json" | xargs -r jsonlint -q
+      continue-on-error: true # Allows other linter steps to run even if this one fails
