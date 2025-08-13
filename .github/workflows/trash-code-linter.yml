@@ -1,5 +1,5 @@
 # .github/workflows/conservative-lint.yml
-name: Conservative Linter
+name: Lint, but only flag trash code
 
 on:
   push:
