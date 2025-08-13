@@ -1,4 +1,3 @@
-# .github/workflows/conservative-lint.yml
 name: Conservative Linter
 
 on:
