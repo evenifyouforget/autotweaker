@@ -1,3 +1,4 @@
+# .github/workflows/conservative-lint.yml
 name: Conservative Linter
 
 on:
@@ -31,6 +32,12 @@ jobs:
         sudo apt-get update && sudo apt-get install -y shellcheck
         npm install -g markdownlint-cli
 
+    - name: Initialize report file
+      # Creates an empty markdown file to store linter outputs.
+      run: |
+        echo "# Conservative Linter Report" > linter_report.md
+        echo "" >> linter_report.md
+
     - name: Run Flake8 (Python & SCons files)
       # Flake8 is used for Python code, which will also cover your SCons files
       # as they are Python scripts.
@@ -42,12 +49,22 @@ jobs:
       #               E.g., E501 (line length, though set higher here), W503 (binary operator line break),
       #               E203 (whitespace before colon), F401 (unused import), F841 (unused variable).
       # --exclude=...: Ignores common generated directories.
+      # 2>&1 | tee -a linter_report.md: Redirects both stdout and stderr to the report file
+      # and also to the console output (tee).
       run: |
-        echo "Running Flake8 for Python and SCons files..."
+        echo "## Flake8 Report (Python & SCons)" >> linter_report.md
         flake8 . \
           --max-line-length=120 \
           --ignore=E501,W503,E203,E701,E702,E703,E704,E711,E712,E722,W605,F401,F841 \
-          --exclude=.git,__pycache__,build,dist
+          --exclude=.git,__pycache__,build,dist \
+          2>&1 | tee -a linter_report.md
+        # Check the exit code of the last command ($?) to see if errors were found.
+        if [ $? -ne 0 ]; then
+          echo "**Flake8 found issues.**" >> linter_report.md
+        else
+          echo "No Flake8 issues found." >> linter_report.md
+        fi
+        echo "" >> linter_report.md
       continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Cpplint (C++)
@@ -57,24 +74,18 @@ jobs:
       #                focusing on more severe issues like build problems or potential runtime errors.
       #                The filters specifically exclude common formatting, naming, and legal checks.
       run: |
-        echo "Running Cpplint for C++ files..."
+        echo "## Cpplint Report (C++)" >> linter_report.md
         find . -name "*.cpp" -o -name "*.cc" -o -name "*.h" -o -name "*.hpp" | \
           xargs cpplint \
             --verbose=0 \
-            --filter=\
--whitespace/line_length,\
--whitespace/indent,\
--whitespace/braces,\
--readability/casting,\
--readability/todo,\
--readability/alt_tokens,\
--build/include_order,\
--legal/copyright,\
--naming/class,\
--naming/enum,\
--naming/function,\
--naming/variable \
-            --
+            --filter=-whitespace/line_length,-whitespace/indent,-whitespace/braces,-readability/casting,-readability/todo,-readability/alt_tokens,-build/include_order,-legal/copyright,-naming/class,-naming/enum,-naming/function,-naming/variable \
+            -- 2>&1 | tee -a linter_report.md
+        if [ $? -ne 0 ]; then
+          echo "**Cpplint found issues.**" >> linter_report.md
+        else
+          echo "No Cpplint issues found." >> linter_report.md
+        fi
+        echo "" >> linter_report.md
       continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Shellcheck (Bash)
@@ -82,8 +93,14 @@ jobs:
       # common logical pitfalls, and security issues in shell scripts.
       # It's a good tool for catching "horrendous" bash issues.
       run: |
-        echo "Running Shellcheck for Bash files..."
-        find . -name "*.sh" -o -name "*.bash" | xargs shellcheck
+        echo "## Shellcheck Report (Bash)" >> linter_report.md
+        find . -name "*.sh" -o -name "*.bash" | xargs shellcheck 2>&1 | tee -a linter_report.md
+        if [ $? -ne 0 ]; then
+          echo "**Shellcheck found issues.**" >> linter_report.md
+        else
+          echo "No Shellcheck issues found." >> linter_report.md
+        fi
+        echo "" >> linter_report.md
       continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run Markdownlint (Markdown)
@@ -91,16 +108,36 @@ jobs:
       # inline HTML, blank lines around elements) but will still flag issues
       # that significantly impact readability or rendering.
       run: |
-        echo "Running Markdownlint for Markdown files..."
+        echo "## Markdownlint Report (Markdown)" >> linter_report.md
         markdownlint \
           --disable MD013,MD033,MD040,MD007,MD009,MD024,MD026,MD029,MD030,MD031,MD032,MD034,MD036,MD037,MD038,MD039,MD041,MD043,MD044,MD046,MD047 \
-          $(find . -name "*.md")
+          $(find . -name "*.md") 2>&1 | tee -a linter_report.md
+        if [ $? -ne 0 ]; then
+          echo "**Markdownlint found issues.**" >> linter_report.md
+        else
+          echo "No Markdownlint issues found." >> linter_report.md
+        fi
+        echo "" >> linter_report.md
       continue-on-error: true # Allows other linter steps to run even if this one fails
 
     - name: Run JSON Lint (JSON)
       # jsonlint checks for valid JSON syntax, which is a fundamental "sanity check"
       # for your JSON files. It will fail if the JSON is malformed.
       run: |
-        echo "Running JSON Lint for JSON files..."
-        find . -name "*.json" | xargs -r jsonlint -q
+        echo "## JSON Lint Report (JSON)" >> linter_report.md
+        find . -name "*.json" | xargs -r jsonlint -q 2>&1 | tee -a linter_report.md
+        if [ $? -ne 0 ]; then
+          echo "**JSON Lint found issues.**" >> linter_report.md
+        else
+          echo "No JSON Lint issues found." >> linter_report.md
+        fi
+        echo "" >> linter_report.md
       continue-on-error: true # Allows other linter steps to run even if this one fails
+
+    - name: Consolidate and Publish Linter Report
+      # This step reads the generated linter_report.md and publishes its content
+      # to the workflow run summary for easy viewing.
+      # The `failure()` expression ensures this step runs even if previous steps fail.
+      if: always()
+      run: |
+        cat linter_report.md >> $GITHUB_STEP_SUMMARY
