@@ -1,8 +1,9 @@
 import numpy as np
 import math
 import warnings
-from typing import Tuple
+from typing import Tuple, List
 from get_design import FCDesignStruct, FCPieceStruct
+from PIL import Image, ImageDraw, ImageFont
 
 # World bounds from fcsim source
 WORLD_MIN_X = -2000
@@ -209,3 +210,146 @@ def _convert_to_rgb_vectorized(image: np.ndarray) -> np.ndarray:
         rgb_image[mask] = rgb
     
     return rgb_image
+
+def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
+    """
+    Upscale an image by an integer factor using nearest neighbor scaling.
+    
+    Args:
+        image: Input image array, either (H, W) for grayscale or (H, W, 3) for RGB
+        scale_factor: Integer scaling factor (e.g., 4 for 4x upscaling)
+    
+    Returns:
+        np.ndarray: Upscaled image with pixel art effect
+    """
+    if not isinstance(scale_factor, int) or scale_factor < 1:
+        raise ValueError("scale_factor must be a positive integer")
+    
+    if scale_factor == 1:
+        return image.copy()
+    
+    if len(image.shape) == 2:
+        # Grayscale image
+        upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
+    elif len(image.shape) == 3 and image.shape[2] == 3:
+        # RGB image
+        upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
+    else:
+        raise ValueError("Image must be either grayscale (H, W) or RGB (H, W, 3)")
+    
+    return upscaled
+
+def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List, 
+                          goal_pieces_coords: List[Tuple[float, float]] = None,
+                          goal_area_center: Tuple[float, float] = None) -> Image.Image:
+    """
+    Draw waypoints preview on an RGB image with path visualization.
+    
+    Args:
+        rgb_image: RGB image array (H, W, 3)
+        waypoints: List of waypoints with x, y, radius attributes (in world coordinates)
+        goal_pieces_coords: List of (x, y) goal piece positions in world coordinates (optional, for path drawing)
+        goal_area_center: (x, y) center of goal area in world coordinates (optional, for path drawing)
+    
+    Returns:
+        PIL.Image: Image with waypoints and path overlaid
+    """
+    if len(rgb_image.shape) != 3 or rgb_image.shape[2] != 3:
+        raise ValueError("rgb_image must be a 3-channel RGB image (H, W, 3)")
+    
+    # Convert numpy array to PIL Image
+    pil_image = Image.fromarray(rgb_image.astype(np.uint8))
+    draw = ImageDraw.Draw(pil_image)
+    
+    # Image dimensions
+    height, width = rgb_image.shape[:2]
+    
+    # World to pixel coordinate conversion
+    def world_to_pixel(world_x, world_y):
+        pixel_x = (world_x - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
+        pixel_y = (world_y - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
+        return int(pixel_x), int(pixel_y)
+    
+    # Define colors
+    waypoint_color = (128, 128, 128)  # Joint gray
+    path_color = (96, 96, 96)  # Darker gray for path
+    text_color = (255, 255, 255)  # White text
+    
+    # Try to load a font, fall back to default if not available
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
+    except (OSError, IOError):
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+    
+    # Draw path from goal pieces through waypoints to goal area
+    path_points = []
+    
+    # Add goal piece positions
+    if goal_pieces_coords:
+        for gp_x, gp_y in goal_pieces_coords:
+            path_points.append(world_to_pixel(gp_x, gp_y))
+    
+    # Add waypoint positions
+    waypoint_pixels = []
+    for wp in waypoints:
+        wp_pixel = world_to_pixel(wp.x, wp.y)
+        waypoint_pixels.append(wp_pixel)
+        path_points.append(wp_pixel)
+    
+    # Add goal area center
+    if goal_area_center:
+        path_points.append(world_to_pixel(goal_area_center[0], goal_area_center[1]))
+    
+    # Draw path lines
+    if len(path_points) > 1:
+        for i in range(len(path_points) - 1):
+            start_point = path_points[i]
+            end_point = path_points[i + 1]
+            draw.line([start_point, end_point], fill=path_color, width=2)
+    
+    # Draw waypoints as circles with numbers
+    for i, (wp, (px, py)) in enumerate(zip(waypoints, waypoint_pixels)):
+        # Convert radius from world coordinates to pixels
+        radius_world = wp.radius
+        radius_pixels = radius_world * min(width / (WORLD_MAX_X - WORLD_MIN_X), 
+                                          height / (WORLD_MAX_Y - WORLD_MIN_Y))
+        radius_pixels = max(5, int(radius_pixels))  # Minimum visible radius
+        
+        # Draw circle outline
+        bbox = [px - radius_pixels, py - radius_pixels, 
+                px + radius_pixels, py + radius_pixels]
+        draw.ellipse(bbox, outline=waypoint_color, width=2)
+        
+        # Draw waypoint number
+        waypoint_number = str(i + 1)
+        if font:
+            # Get text bounding box for centering
+            bbox = draw.textbbox((0, 0), waypoint_number, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        else:
+            # Rough estimation for default font
+            text_width = len(waypoint_number) * 6
+            text_height = 10
+        
+        text_x = px - text_width // 2
+        text_y = py - text_height // 2
+        
+        # Draw text background circle for better visibility
+        text_bg_radius = max(text_width, text_height) // 2 + 2
+        text_bg_bbox = [px - text_bg_radius, py - text_bg_radius,
+                        px + text_bg_radius, py + text_bg_radius]
+        draw.ellipse(text_bg_bbox, fill=(0, 0, 0, 128))  # Semi-transparent black
+        
+        if font:
+            draw.text((text_x, text_y), waypoint_number, fill=text_color, font=font)
+        else:
+            draw.text((text_x, text_y), waypoint_number, fill=text_color)
+    
+    # Note: Goal pieces and goal area are already visible in the RGB image,
+    # so we don't need to draw additional markers for them
+    
+    return pil_image
