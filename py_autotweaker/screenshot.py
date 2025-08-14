@@ -237,7 +237,7 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
     
     Args:
         rgb_image: RGB image array (H, W, 3)
-        waypoints: List of waypoints with x, y, radius attributes (in world coordinates)
+        waypoints: List of waypoint dictionaries with keys 'x', 'y', 'radius' (in world coordinates)
         design_struct: FCDesignStruct containing goal pieces and goal area (optional, for path drawing)
     
     Returns:
@@ -296,7 +296,7 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
     # Add waypoint positions
     waypoint_pixels = []
     for wp in waypoints:
-        wp_pixel = world_to_pixel(wp.x, wp.y)
+        wp_pixel = world_to_pixel(wp["x"], wp["y"])
         waypoint_pixels.append(wp_pixel)
         path_points.append(wp_pixel)
     
@@ -314,7 +314,7 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
     # Draw waypoints as circles with numbers
     for i, (wp, (px, py)) in enumerate(zip(waypoints, waypoint_pixels)):
         # Convert radius from world coordinates to pixels
-        radius_world = wp.radius
+        radius_world = wp["radius"]
         radius_pixels = radius_world * min(width / (WORLD_MAX_X - WORLD_MIN_X), 
                                           height / (WORLD_MAX_Y - WORLD_MIN_Y))
         radius_pixels = max(5, int(radius_pixels))  # Minimum visible radius

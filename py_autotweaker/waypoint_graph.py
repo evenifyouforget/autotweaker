@@ -1,13 +1,10 @@
 import numpy as np
 import logging
 import time
-from collections import namedtuple
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
-
-Waypoint = namedtuple('Waypoint', ['x', 'y', 'radius'])
 
 # Color constants from screenshot.py
 COLOR_BACKGROUND = 0
@@ -37,7 +34,7 @@ class WaypointGenerationError(Exception):
 
 def generate_waypoints(screenshot: np.ndarray,
                        limit_time_seconds: float | None = None,
-                       limit_iterations: int | None = None) -> List[Waypoint]:
+                       limit_iterations: int | None = None) -> List[Dict[str, float]]:
     """
     Generate waypoints for a level screenshot using graph-based pathfinding.
     
@@ -47,7 +44,7 @@ def generate_waypoints(screenshot: np.ndarray,
         limit_iterations: Iteration budget (None for no limit)
         
     Returns:
-        List of waypoints ordered from start to goal
+        List of waypoint dictionaries with keys 'x', 'y', 'radius' ordered from start to goal
         
     Raises:
         WaypointGenerationError: If generation fails
@@ -134,7 +131,7 @@ def _extract_level_info(screenshot: np.ndarray) -> Tuple[List[Tuple[int, int]], 
 
 def _generate_waypoint_candidate(screenshot: np.ndarray, goal_pieces: List[Tuple[int, int]], 
                                 goal_area: Tuple[int, int, int, int], passable_mask: np.ndarray,
-                                pixel_to_world) -> List[Waypoint]:
+                                pixel_to_world) -> List[Dict[str, float]]:
     """Generate a candidate set of waypoints using simple pathfinding"""
     
     if not goal_pieces or goal_area is None:
@@ -163,7 +160,7 @@ def _generate_waypoint_candidate(screenshot: np.ndarray, goal_pieces: List[Tuple
     mid_x = (start_x + goal_center_x) // 2
     mid_y = (start_y + goal_center_y) // 2
     world_x, world_y = pixel_to_world(mid_x, mid_y)
-    return [Waypoint(world_x, world_y, 100.0)]
+    return [{"x": world_x, "y": world_y, "radius": 100.0}]
 
 def _find_path(start_x: int, start_y: int, goal_x: int, goal_y: int, passable_mask: np.ndarray) -> List[Tuple[int, int]]:
     """Simple A* pathfinding on the passable mask"""
@@ -228,7 +225,7 @@ def _find_path(start_x: int, start_y: int, goal_x: int, goal_y: int, passable_ma
     return []  # No path found
 
 def _simplify_path_to_waypoints(path: List[Tuple[int, int]], passable_mask: np.ndarray, 
-                               pixel_to_world) -> List[Waypoint]:
+                               pixel_to_world) -> List[Dict[str, float]]:
     """Convert a pixel path to a simplified set of waypoints"""
     if len(path) < 3:
         return []
@@ -278,7 +275,7 @@ def _simplify_path_to_waypoints(path: List[Tuple[int, int]], passable_mask: np.n
         # Calculate appropriate radius based on local corridor width
         radius = _calculate_waypoint_radius(px, py, passable_mask)
         
-        waypoints.append(Waypoint(world_x, world_y, radius))
+        waypoints.append({"x": world_x, "y": world_y, "radius": radius})
     
     return waypoints
 
@@ -313,7 +310,7 @@ def _calculate_waypoint_radius(px: int, py: int, passable_mask: np.ndarray) -> f
     
     return radius
 
-def _score_waypoints(waypoints: List[Waypoint], goal_pieces: List[Tuple[int, int]], 
+def _score_waypoints(waypoints: List[Dict[str, float]], goal_pieces: List[Tuple[int, int]], 
                     goal_area: Tuple[int, int, int, int], passable_mask: np.ndarray,
                     pixel_to_world) -> float:
     """Score a set of waypoints based on various criteria"""
@@ -328,7 +325,7 @@ def _score_waypoints(waypoints: List[Waypoint], goal_pieces: List[Tuple[int, int
     # Penalty for waypoints that are too close together
     for i in range(len(waypoints) - 1):
         w1, w2 = waypoints[i], waypoints[i + 1]
-        distance = ((w1.x - w2.x)**2 + (w1.y - w2.y)**2)**0.5
+        distance = ((w1["x"] - w2["x"])**2 + (w1["y"] - w2["y"])**2)**0.5
         if distance < 200:  # Too close
             score += (200 - distance) * 0.01
             
@@ -346,8 +343,8 @@ def _score_waypoints(waypoints: List[Waypoint], goal_pieces: List[Tuple[int, int
         current_x, current_y = gp_world_x, gp_world_y
         
         for waypoint in waypoints:
-            path_length += ((waypoint.x - current_x)**2 + (waypoint.y - current_y)**2)**0.5
-            current_x, current_y = waypoint.x, waypoint.y
+            path_length += ((waypoint["x"] - current_x)**2 + (waypoint["y"] - current_y)**2)**0.5
+            current_x, current_y = waypoint["x"], waypoint["y"]
             
         path_length += ((goal_world_x - current_x)**2 + (goal_world_y - current_y)**2)**0.5
         
