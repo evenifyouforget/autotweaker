@@ -285,31 +285,46 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
         # Extract goal area center
         goal_area_center = (design_struct.goal_area.x, design_struct.goal_area.y)
     
-    # Draw path from goal pieces through waypoints to goal area
-    path_points = []
-    
-    # Add goal piece positions
-    if goal_pieces_coords:
-        for gp_x, gp_y in goal_pieces_coords:
-            path_points.append(world_to_pixel(gp_x, gp_y))
-    
-    # Add waypoint positions
+    # Convert waypoint positions to pixels
     waypoint_pixels = []
     for wp in waypoints:
         wp_pixel = world_to_pixel(wp["x"], wp["y"])
         waypoint_pixels.append(wp_pixel)
-        path_points.append(wp_pixel)
     
-    # Add goal area center
+    # Build the path: goal_pieces -> wp1 -> wp2 -> ... -> wpN -> goal_area
+    # Using reverse walk approach as suggested
+    
+    # Create the full path nodes: [goal_area] + waypoints (reversed) 
+    path_nodes = []
     if goal_area_center:
-        path_points.append(world_to_pixel(goal_area_center[0], goal_area_center[1]))
+        path_nodes.append(world_to_pixel(goal_area_center[0], goal_area_center[1]))
     
-    # Draw path lines
-    if len(path_points) > 1:
-        for i in range(len(path_points) - 1):
-            start_point = path_points[i]
-            end_point = path_points[i + 1]
+    # Add waypoints in reverse order (so we can walk backwards)
+    for wp_pixel in reversed(waypoint_pixels):
+        path_nodes.append(wp_pixel)
+    
+    # Draw the sequential path through waypoints to goal
+    if len(path_nodes) > 1:
+        for i in range(len(path_nodes) - 1):
+            start_point = path_nodes[i + 1]  # Start from later waypoint
+            end_point = path_nodes[i]        # Go to earlier waypoint/goal
             draw.line([start_point, end_point], fill=path_color, width=2)
+    
+    # Draw lines from each goal piece to the first waypoint (or goal if no waypoints)
+    if goal_pieces_coords:
+        # Determine the target: first waypoint if waypoints exist, otherwise goal area
+        if waypoint_pixels:
+            target_pixel = waypoint_pixels[0]  # First waypoint
+        elif goal_area_center:
+            target_pixel = world_to_pixel(goal_area_center[0], goal_area_center[1])  # Goal area
+        else:
+            target_pixel = None
+        
+        # Draw line from each goal piece to the target
+        if target_pixel:
+            for gp_x, gp_y in goal_pieces_coords:
+                gp_pixel = world_to_pixel(gp_x, gp_y)
+                draw.line([gp_pixel, target_pixel], fill=path_color, width=2)
     
     # Draw waypoints as circles with numbers
     for i, (wp, (px, py)) in enumerate(zip(waypoints, waypoint_pixels)):
