@@ -6,14 +6,14 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Color constants from screenshot.py
+# Color constants for level analysis
 COLOR_BACKGROUND = 0
 COLOR_STATIC = 1
 COLOR_DYNAMIC = 2
 COLOR_GOAL_PIECE = 3
 COLOR_GOAL_AREA = 4
 
-# World bounds from screenshot.py
+# World coordinate bounds (matches screenshot.py)
 WORLD_MIN_X = -2000
 WORLD_MAX_X = 2000
 WORLD_MIN_Y = -1450
@@ -86,11 +86,11 @@ def generate_waypoints(screenshot: np.ndarray,
                 
             # Generate waypoint candidate
             waypoints = _generate_waypoint_candidate(
-                screenshot, goal_pieces, goal_area, passable_mask, pixel_to_world
+                goal_pieces, goal_area, passable_mask, pixel_to_world
             )
             
             # Score the waypoints
-            score = _score_waypoints(waypoints, goal_pieces, goal_area, passable_mask, pixel_to_world)
+            score = _score_waypoints(waypoints, goal_pieces, goal_area, pixel_to_world)
             
             if score < best_score:
                 best_score = score
@@ -129,7 +129,7 @@ def _extract_level_info(screenshot: np.ndarray) -> Tuple[List[Tuple[int, int]], 
     
     return goal_pieces, goal_area, passable_mask
 
-def _generate_waypoint_candidate(screenshot: np.ndarray, goal_pieces: List[Tuple[int, int]], 
+def _generate_waypoint_candidate(goal_pieces: List[Tuple[int, int]], 
                                 goal_area: Tuple[int, int, int, int], passable_mask: np.ndarray,
                                 pixel_to_world) -> List[Dict[str, float]]:
     """Generate a candidate set of waypoints using simple pathfinding"""
@@ -311,8 +311,7 @@ def _calculate_waypoint_radius(px: int, py: int, passable_mask: np.ndarray) -> f
     return radius
 
 def _score_waypoints(waypoints: List[Dict[str, float]], goal_pieces: List[Tuple[int, int]], 
-                    goal_area: Tuple[int, int, int, int], passable_mask: np.ndarray,
-                    pixel_to_world) -> float:
+                    goal_area: Tuple[int, int, int, int], pixel_to_world) -> float:
     """Score a set of waypoints based on various criteria"""
     if not waypoints:
         return float('inf')

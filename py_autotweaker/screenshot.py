@@ -292,7 +292,6 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
         waypoint_pixels.append(wp_pixel)
     
     # Build the path: goal_pieces -> wp1 -> wp2 -> ... -> wpN -> goal_area
-    # Using reverse walk approach as suggested
     
     # Create the full path nodes: [goal_area] + waypoints (reversed) 
     path_nodes = []
