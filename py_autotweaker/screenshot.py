@@ -228,14 +228,7 @@ def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
     if scale_factor == 1:
         return image.copy()
     
-    if len(image.shape) == 2:
-        # Grayscale image
-        upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
-    elif len(image.shape) == 3 and image.shape[2] == 3:
-        # RGB image
-        upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
-    else:
-        raise ValueError("Image must be either grayscale (H, W) or RGB (H, W, 3)")
+    upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
     
     return upscaled
 
