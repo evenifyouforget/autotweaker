@@ -228,9 +228,7 @@ def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
     if scale_factor == 1:
         return image.copy()
     
-    upscaled = np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
-    
-    return upscaled
+    return np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
 
 def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List, 
                           goal_pieces_coords: List[Tuple[float, float]] = None,
