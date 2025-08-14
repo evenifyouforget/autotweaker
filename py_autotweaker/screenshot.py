@@ -231,16 +231,14 @@ def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
     return np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
 
 def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List, 
-                          goal_pieces_coords: List[Tuple[float, float]] = None,
-                          goal_area_center: Tuple[float, float] = None) -> Image.Image:
+                          design_struct: FCDesignStruct = None) -> Image.Image:
     """
     Draw waypoints preview on an RGB image with path visualization.
     
     Args:
         rgb_image: RGB image array (H, W, 3)
         waypoints: List of waypoints with x, y, radius attributes (in world coordinates)
-        goal_pieces_coords: List of (x, y) goal piece positions in world coordinates (optional, for path drawing)
-        goal_area_center: (x, y) center of goal area in world coordinates (optional, for path drawing)
+        design_struct: FCDesignStruct containing goal pieces and goal area (optional, for path drawing)
     
     Returns:
         PIL.Image: Image with waypoints and path overlaid
@@ -274,6 +272,18 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
             font = ImageFont.load_default()
         except:
             font = None
+    
+    # Extract goal pieces and goal area from design_struct
+    goal_pieces_coords = []
+    goal_area_center = None
+    
+    if design_struct:
+        # Extract goal piece positions
+        for piece in design_struct.goal_pieces:
+            goal_pieces_coords.append((piece.x, piece.y))
+        
+        # Extract goal area center
+        goal_area_center = (design_struct.goal_area.x, design_struct.goal_area.y)
     
     # Draw path from goal pieces through waypoints to goal area
     path_points = []
