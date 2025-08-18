@@ -1,8 +1,9 @@
 import numpy as np
 import math
 import warnings
-from typing import Tuple
+from typing import Tuple, List, Dict
 from get_design import FCDesignStruct, FCPieceStruct
+from PIL import Image, ImageDraw, ImageFont
 
 # World bounds from fcsim source
 WORLD_MIN_X = -2000
@@ -209,3 +210,106 @@ def _convert_to_rgb_vectorized(image: np.ndarray) -> np.ndarray:
         rgb_image[mask] = rgb
     
     return rgb_image
+
+def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
+    """
+    Upscale an image by an integer factor using nearest neighbor scaling.
+    
+    Args:
+        image: Input image array, either (H, W) for grayscale or (H, W, 3) for RGB
+        scale_factor: Integer scaling factor (e.g., 4 for 4x upscaling)
+    
+    Returns:
+        np.ndarray: Upscaled image with pixel art effect
+    """
+    if not isinstance(scale_factor, int) or scale_factor < 1:
+        raise ValueError("scale_factor must be a positive integer")
+    
+    if scale_factor == 1:
+        return image.copy()
+    
+    return np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
+
+def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List[Dict[str, float]], 
+                          design_struct: FCDesignStruct = None) -> Image.Image:
+    """
+    Draw waypoints preview on an RGB image with path visualization. Includes:
+    - Lines connecting the waypoints to form a path
+    - Circles around waypoints with numbers
+    
+    Args:
+        rgb_image: RGB image array (H, W, 3)
+        waypoints: List of waypoint dictionaries with keys 'x', 'y', 'radius' (in world coordinates)
+        design_struct: FCDesignStruct containing goal pieces and goal area (optional, for goal pieces and goal area)
+    
+    Returns:
+        PIL.Image: Image with waypoints and path overlaid
+    """
+    if len(rgb_image.shape) != 3 or rgb_image.shape[2] != 3:
+        raise ValueError("rgb_image must be a 3-channel RGB image (H, W, 3)")
+    
+    # Convert numpy array to PIL Image
+    pil_image = Image.fromarray(rgb_image.astype(np.uint8))
+    draw = ImageDraw.Draw(pil_image)
+    
+    # Image dimensions
+    height, width = rgb_image.shape[:2]
+    
+    # World to pixel coordinate conversion
+    def world_to_pixel(world_x, world_y):
+        pixel_x = (world_x - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
+        pixel_y = (world_y - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
+        return int(pixel_x), int(pixel_y)
+    
+    # Define colors
+    waypoint_color = (128, 128, 128)  # Joint gray
+    path_color = (96, 96, 96)  # Darker gray for path
+    text_color = (255, 255, 255)  # White text
+    
+    # Use default font
+    font = ImageFont.load_default()
+    
+    # Extract goal pieces and goal area from design_struct
+    goal_pieces_coords = []
+    goal_area_center = None
+    
+    if design_struct:
+        # Extract goal piece positions
+        for piece in design_struct.goal_pieces:
+            goal_pieces_coords.append((piece.x, piece.y))
+        
+        # Extract goal area center
+        goal_area_center = (design_struct.goal_area.x, design_struct.goal_area.y)
+    
+    # Draw: [goal_pieces] -> wp1 -> wp2 -> ... -> wpN -> goal_area
+    # First draw wp1 -> wp2 -> ... -> wpN -> goal_area
+    path_nodes = [world_to_pixel(wp["x"], wp["y"]) for wp in waypoints]
+    waypoint_pixels = list(path_nodes)
+    if goal_area_center:
+        path_nodes.append(world_to_pixel(goal_area_center[0], goal_area_center[1]))
+    for start_point, end_point in zip(path_nodes, path_nodes[1:]):
+        draw.line([start_point, end_point], fill=path_color, width=2)
+            
+    # Now draw [goal_pieces] -> wp1
+    if goal_pieces_coords and path_nodes:
+        for gp_x, gp_y in goal_pieces_coords:
+            draw.line([world_to_pixel(gp_x, gp_y), path_nodes[0]], fill=path_color, width=2)
+    
+    # Draw waypoints as circles with numbers
+    for i, (wp, (px, py)) in enumerate(zip(waypoints, waypoint_pixels)):
+        # Convert radius from world coordinates to pixels
+        radius_world = wp["radius"]
+        radius_pixels = radius_world * min(width / (WORLD_MAX_X - WORLD_MIN_X), 
+                                          height / (WORLD_MAX_Y - WORLD_MIN_Y))
+
+        # Draw circle outline
+        bbox = [px - radius_pixels, py - radius_pixels, 
+                px + radius_pixels, py + radius_pixels]
+        draw.ellipse(bbox, outline=waypoint_color, width=2)
+        
+        # Draw waypoint number
+        waypoint_number = str(i + 1)
+
+        draw.text((px, py), waypoint_number, fill=text_color, font=font)
+    
+    return pil_image
