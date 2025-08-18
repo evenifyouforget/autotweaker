@@ -45,7 +45,8 @@ jobs:
       # This action handles Mypy execution and creates inline annotations on your PR.
       # The 'mypy_flags' input is used to pass your desired loosening flags.
       - name: Run Mypy with Annotations (Looser Check)
-        uses: sasanquaneuf/mypy-github-action@v3 # Updated to v3 to resolve "unable to find version" error
+        # Using 'releases/v1.3' which is the latest stable release tag available for this action
+        uses: sasanquaneuf/mypy-github-action@releases/v1.3
         with:
           # Pass the flags for looser checking, suitable for partially typed codebases.
           # These flags will ignore missing imports, allow untyped function definitions,
