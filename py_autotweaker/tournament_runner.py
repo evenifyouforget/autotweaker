@@ -184,7 +184,9 @@ def main():
     if args.full:
         args.max_levels = 100
         args.advanced = True
-        print("Full tournament mode: Testing all 100 levels with creative algorithms")
+        if args.mode == 'synthetic':  # Auto-switch to real mode for --full
+            args.mode = 'real'
+        print("Full tournament mode: Testing all 100 real levels with creative algorithms")
     
     if args.list_algorithms or args.mode == 'list':
         print("Available Algorithms:")
