@@ -6,4 +6,4 @@ cd ..
 # make sure we built latest
 scons
 # pass through args to Python
-python3 -m py_autotweaker "$@"
+python3.13 -m py_autotweaker "$@"

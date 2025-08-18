@@ -2,7 +2,15 @@ import numpy as np
 import math
 import warnings
 from typing import Tuple, List, Dict
-from get_design import FCDesignStruct, FCPieceStruct
+try:
+    from get_design import FCDesignStruct, FCPieceStruct
+except ImportError:
+    # For testing, define minimal stubs
+    from typing import NamedTuple
+    from collections import namedtuple
+    
+    FCPieceStruct = namedtuple('FCPieceStruct', ['type_id', 'piece_id', 'x', 'y', 'w', 'h', 'angle', 'joints'])
+    FCDesignStruct = namedtuple('FCDesignStruct', ['name', 'base_level_id', 'goal_pieces', 'design_pieces', 'level_pieces', 'build_area', 'goal_area'])
 from PIL import Image, ImageDraw, ImageFont
 
 # World bounds from fcsim source
