@@ -47,10 +47,3 @@ jobs:
       - name: Run Mypy with Annotations (Configured by mypy.ini)
         # Using 'releases/v1.3' which is the latest stable release tag available for this action
         uses: sasanquaneuf/mypy-github-action@releases/v1.3
-        with:
-          # The 'mypy_flags' input is not supported by this action.
-          # Mypy will automatically look for 'mypy.ini' in the repository root.
-          # You can specify a check name if desired (optional)
-          # checkName: 'Python Type Checking'
-          # If you want to specify a custom config file path (e.g., if not at root):
-          # mypy_config_file: 'path/to/your/mypy.ini'
