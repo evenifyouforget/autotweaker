@@ -51,7 +51,9 @@ OPTIONS:
     --advanced         Include all creative algorithms (8+ total, slower)
     --full             Test all 100 REAL levels with creative algorithms
     --comprehensive    Use comprehensive analysis system (saves detailed results)
+    --multithreaded    Use multithreaded execution with timeouts (faster, recommended)
     --fast             Quick test mode (20 levels max, fast algorithms)
+    --timeout N        Timeout per algorithm in seconds (default: 10)
     --quiet            Reduce output verbosity
     --help             Show this help message
 
@@ -95,8 +97,10 @@ MODE="synthetic"
 MAX_LEVELS=10
 ADVANCED_FLAG=""
 COMPREHENSIVE_FLAG=""
+MULTITHREADED_FLAG=""
 QUIET_FLAG=""
 FAST_MODE=false
+TIMEOUT=10
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -123,6 +127,14 @@ while [[ $# -gt 0 ]]; do
         --comprehensive)
             COMPREHENSIVE_FLAG="--comprehensive"
             shift
+            ;;
+        --multithreaded)
+            MULTITHREADED_FLAG="--multithreaded"
+            shift
+            ;;
+        --timeout)
+            TIMEOUT="$2"
+            shift 2
             ;;
         --fast)
             FAST_MODE=true
@@ -214,7 +226,30 @@ if [[ -n "$MISSING_DEPS" ]]; then
 fi
 
 # Build command based on mode
-if [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
+if [[ "$MULTITHREADED_FLAG" == "--multithreaded" ]]; then
+    # Use multithreaded tournament system
+    CMD="python3 py_autotweaker/comprehensive_multithreaded_tournament.py"
+    
+    if [[ "$MODE" == "real" || "$MODE" == "mixed" ]]; then
+        CMD="$CMD --real --max-levels $MAX_LEVELS"
+    else
+        CMD="$CMD --synthetic"
+    fi
+    
+    if [[ -n "$ADVANCED_FLAG" ]]; then
+        # Advanced includes creative algorithms, also add weird ones
+        CMD="$CMD"  # Creative algorithms included by default
+    else
+        CMD="$CMD --no-creative --no-weird"  # Only basic algorithms
+    fi
+    
+    CMD="$CMD --timeout $TIMEOUT"
+    
+    if [[ -n "$QUIET_FLAG" ]]; then
+        CMD="$CMD > /dev/null"
+    fi
+    
+elif [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
     # Use comprehensive tournament system
     CMD="python3 py_autotweaker/full_tournament_runner.py"
     
