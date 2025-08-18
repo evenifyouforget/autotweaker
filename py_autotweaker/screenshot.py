@@ -233,12 +233,14 @@ def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
 def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List, 
                           design_struct: FCDesignStruct = None) -> Image.Image:
     """
-    Draw waypoints preview on an RGB image with path visualization.
+    Draw waypoints preview on an RGB image with path visualization. Includes:
+    - Lines connecting the waypoints to form a path
+    - Circles around waypoints with numbers
     
     Args:
         rgb_image: RGB image array (H, W, 3)
         waypoints: List of waypoint dictionaries with keys 'x', 'y', 'radius' (in world coordinates)
-        design_struct: FCDesignStruct containing goal pieces and goal area (optional, for path drawing)
+        design_struct: FCDesignStruct containing goal pieces and goal area (optional, for goal pieces and goal area)
     
     Returns:
         PIL.Image: Image with waypoints and path overlaid
@@ -264,14 +266,8 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
     path_color = (96, 96, 96)  # Darker gray for path
     text_color = (255, 255, 255)  # White text
     
-    # Try to load a font, fall back to default if not available
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
-    except (OSError, IOError):
-        try:
-            font = ImageFont.load_default()
-        except:
-            font = None
+    # Use default font
+    font = ImageFont.load_default()
     
     # Extract goal pieces and goal area from design_struct
     goal_pieces_coords = []
@@ -285,45 +281,19 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
         # Extract goal area center
         goal_area_center = (design_struct.goal_area.x, design_struct.goal_area.y)
     
-    # Convert waypoint positions to pixels
-    waypoint_pixels = []
-    for wp in waypoints:
-        wp_pixel = world_to_pixel(wp["x"], wp["y"])
-        waypoint_pixels.append(wp_pixel)
-    
-    # Build the path: goal_pieces -> wp1 -> wp2 -> ... -> wpN -> goal_area
-    
-    # Create the full path nodes: [goal_area] + waypoints (reversed) 
-    path_nodes = []
+    # Draw: [goal_pieces] -> wp1 -> wp2 -> ... -> wpN -> goal_area
+    # First draw wp1 -> wp2 -> ... -> wpN -> goal_area
+    path_nodes = [world_to_pixel(wp["x"], wp["y"]) for wp in waypoints]
+    waypoint_pixels = list(path_nodes)
     if goal_area_center:
         path_nodes.append(world_to_pixel(goal_area_center[0], goal_area_center[1]))
-    
-    # Add waypoints in reverse order (so we can walk backwards)
-    for wp_pixel in reversed(waypoint_pixels):
-        path_nodes.append(wp_pixel)
-    
-    # Draw the sequential path through waypoints to goal
-    if len(path_nodes) > 1:
-        for i in range(len(path_nodes) - 1):
-            start_point = path_nodes[i + 1]  # Start from later waypoint
-            end_point = path_nodes[i]        # Go to earlier waypoint/goal
-            draw.line([start_point, end_point], fill=path_color, width=2)
-    
-    # Draw lines from each goal piece to the first waypoint (or goal if no waypoints)
-    if goal_pieces_coords:
-        # Determine the target: first waypoint if waypoints exist, otherwise goal area
-        if waypoint_pixels:
-            target_pixel = waypoint_pixels[0]  # First waypoint
-        elif goal_area_center:
-            target_pixel = world_to_pixel(goal_area_center[0], goal_area_center[1])  # Goal area
-        else:
-            target_pixel = None
-        
-        # Draw line from each goal piece to the target
-        if target_pixel:
-            for gp_x, gp_y in goal_pieces_coords:
-                gp_pixel = world_to_pixel(gp_x, gp_y)
-                draw.line([gp_pixel, target_pixel], fill=path_color, width=2)
+    for start_point, end_point in zip(path_nodes, path_nodes[1:]):
+        draw.line([start_point, end_point], fill=path_color, width=2)
+            
+    # Now draw [goal_pieces] -> wp1
+    if goal_pieces_coords and path_nodes:
+        for gp_x, gp_y in goal_pieces_coords:
+            draw.line([world_to_pixel(gp_x, gp_y), path_nodes[0]], fill=path_color, width=2)
     
     # Draw waypoints as circles with numbers
     for i, (wp, (px, py)) in enumerate(zip(waypoints, waypoint_pixels)):
@@ -331,8 +301,7 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
         radius_world = wp["radius"]
         radius_pixels = radius_world * min(width / (WORLD_MAX_X - WORLD_MIN_X), 
                                           height / (WORLD_MAX_Y - WORLD_MIN_Y))
-        radius_pixels = max(5, int(radius_pixels))  # Minimum visible radius
-        
+
         # Draw circle outline
         bbox = [px - radius_pixels, py - radius_pixels, 
                 px + radius_pixels, py + radius_pixels]
@@ -340,31 +309,7 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List,
         
         # Draw waypoint number
         waypoint_number = str(i + 1)
-        if font:
-            # Get text bounding box for centering
-            bbox = draw.textbbox((0, 0), waypoint_number, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-        else:
-            # Rough estimation for default font
-            text_width = len(waypoint_number) * 6
-            text_height = 10
-        
-        text_x = px - text_width // 2
-        text_y = py - text_height // 2
-        
-        # Draw text background circle for better visibility
-        text_bg_radius = max(text_width, text_height) // 2 + 2
-        text_bg_bbox = [px - text_bg_radius, py - text_bg_radius,
-                        px + text_bg_radius, py + text_bg_radius]
-        draw.ellipse(text_bg_bbox, fill=(0, 0, 0, 128))  # Semi-transparent black
-        
-        if font:
-            draw.text((text_x, text_y), waypoint_number, fill=text_color, font=font)
-        else:
-            draw.text((text_x, text_y), waypoint_number, fill=text_color)
-    
-    # Note: Goal pieces and goal area are already visible in the RGB image,
-    # so we don't need to draw additional markers for them
+
+        draw.text((px, py), waypoint_number, fill=text_color, font=font)
     
     return pil_image
