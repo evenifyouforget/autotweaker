@@ -210,7 +210,8 @@ def score_waypoint_quality(screenshot: np.ndarray, waypoints: List[Dict[str, flo
 
 def improved_score_waypoint_list(screenshot: np.ndarray, waypoints: List[Dict[str, float]], 
                                 penalize_skippable: bool = True, 
-                                feature_flags: Optional[Dict[str, bool]] = None) -> float:
+                                feature_flags: Optional[Dict[str, bool]] = None,
+                                valley_detection_method: str = 'original') -> float:
     """
     Improved scoring function with better local valley detection and evidence-based metrics.
     
@@ -250,9 +251,23 @@ def improved_score_waypoint_list(screenshot: np.ndarray, waypoints: List[Dict[st
         quality_score = score_waypoint_quality(screenshot, waypoints)
         score += quality_score * 1.0  # Primary component
     
-    # Local valley detection (proper implementation)
+    # Local valley detection (configurable method)
     if feature_flags.get('check_local_valleys_proper', True):
-        valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        if valley_detection_method == 'systematic':
+            try:
+                from .advanced_valley_detection import systematic_valley_detection
+                valley_fraction, _ = systematic_valley_detection(screenshot, waypoints, granularity=2)
+            except ImportError:
+                valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        elif valley_detection_method == 'quick_numpy':
+            try:
+                from .advanced_valley_detection import quick_valley_detection_numpy
+                valley_fraction = quick_valley_detection_numpy(screenshot, waypoints)
+            except ImportError:
+                valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        else:  # 'original'
+            valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        
         score += valley_fraction * 500.0  # Heavy penalty for valleys
     
     # Path efficiency (accurate calculation)

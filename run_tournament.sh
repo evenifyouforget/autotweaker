@@ -63,7 +63,8 @@ EXAMPLES:
     $0 real --max-levels 5      # Test 5 real levels (basic algorithms)
     $0 real --advanced          # Test 10 real levels with creative algorithms
     $0 --full                   # FULL TEST: All 100 real levels with all algorithms
-    $0 --comprehensive --fast   # Comprehensive analysis on 20 levels (demo mode)
+    $0 --multithreaded --advanced  # FAST: Multithreaded with all algorithms (recommended)
+    $0 --multithreaded --fast   # Quick multithreaded demo (20 levels, 10s timeout)
     $0 list --advanced          # List all algorithms including creative ones
 
 SPECIAL MODES:
@@ -333,7 +334,7 @@ echo "  - Use --comprehensive for detailed analysis and JSON result saving"
 echo "  - Use --fast for quick demonstrations (20 levels, optimized algorithms)"
 echo ""
 echo "Entry Points:"
-echo "  ./run_tournament.sh --full          # Complete tournament (recommended)"
-echo "  ./run_tournament.sh real --advanced # Real levels with creative algorithms"  
-echo "  ./run_tournament.sh --fast          # Quick demo with all features"
+echo "  ./run_tournament.sh --multithreaded --advanced  # FASTEST: Parallel execution (recommended)"
+echo "  ./run_tournament.sh --full                      # Complete 100-level tournament"  
+echo "  ./run_tournament.sh --multithreaded --fast      # Quick parallel demo"
 echo "========================================================================"
