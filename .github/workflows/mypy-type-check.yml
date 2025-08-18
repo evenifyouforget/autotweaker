@@ -1,5 +1,6 @@
 # This workflow checks Python typing issues using Mypy.
-# It runs automatically on every push to the main branch and for every pull request.
+# It runs automatically on every push to the main branch and for every pull request,
+# providing inline annotations for type errors directly in the pull request view.
 
 name: Mypy Type Check
 
@@ -20,55 +21,37 @@ jobs:
     # Steps define the sequence of tasks executed in this job
     steps:
       # Step 1: Checkout the repository code
-      # This action allows your workflow to access the code in your repository
+      # This action allows your workflow to access the code in your repository.
       - name: Checkout code
         uses: actions/checkout@v4
 
       # Step 2: Set up a Python environment
-      # This action installs a specific Python version on the runner
+      # This action installs Python 3.9 for the build environment.
       - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # Configures Python 3.9 for the build environment
+          python-version: '3.9'
 
-      # Step 3: Install project dependencies and Mypy
-      # This step upgrades pip, installs dependencies from requirements.txt, and then installs Mypy
-      - name: Install dependencies and Mypy
+      # Step 3: Install project dependencies
+      # This step upgrades pip and installs dependencies from requirements.txt if present.
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Install your project's dependencies if a requirements.txt file is present
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          # Install Mypy. Consider pinning a specific version (e.g., 'mypy==1.8.0') for stability.
-          pip install mypy
 
-      # Step 4: Run Mypy to check for type errors and save output to a file
-      # The '--ignore-missing-imports', '--allow-untyped-defs', and '--no-strict-optional' flags
-      # are used to enable looser type checking, suitable for partially typed codebases.
-      # The '|| true' ensures this step doesn't fail immediately, allowing the report artifact
-      # to be uploaded even if Mypy finds errors.
-      - name: Run Mypy and capture report (Looser Check)
-        run: |
-          mypy --ignore-missing-imports --allow-untyped-defs --no-strict-optional . > mypy_report.txt 2>&1 || true
-
-      # Step 5: Upload the Mypy report as an artifact
-      # This action uploads the 'mypy_report.txt' file, making it downloadable from the workflow run summary.
-      - name: Upload Mypy report artifact
-        uses: actions/upload-artifact@v4
+      # Step 4: Run Mypy using a dedicated GitHub Action
+      # This action handles Mypy execution and creates inline annotations on your PR.
+      # The 'mypy_flags' input is used to pass your desired loosening flags.
+      - name: Run Mypy with Annotations (Looser Check)
+        uses: sasanquaneuf/mypy-github-action@v2 # Using a marketplace action for better integration
         with:
-          name: mypy-type-check-report
-          path: mypy_report.txt
-          retention-days: 5 # Sets the artifact retention period to 5 days
-
-      # Step 6: Fail the job if Mypy found errors
-      # This step explicitly checks the Mypy report for actual "error:" messages.
-      # If errors are detected, the job will fail, providing clear status in pull requests.
-      - name: Check Mypy exit code
-        run: |
-          if grep -q " error:" mypy_report.txt; then
-            echo "Mypy found type errors. Please check the 'mypy-type-check-report' artifact for details."
-            exit 1 # Exits with a non-zero code to indicate failure
-          else
-            echo "Mypy check passed with current strictness settings."
-          fi
+          # Pass the flags for looser checking, suitable for partially typed codebases.
+          # These flags will ignore missing imports, allow untyped function definitions,
+          # and relax strict None checks.
+          mypy_flags: "--ignore-missing-imports --allow-untyped-defs --no-strict-optional"
+          # Optionally, you can specify a Mypy version for stability
+          # mypy_version: '1.8.0'
+          # If you have a mypy.ini or pyproject.toml for configuration:
+          # mypy_config_file: 'mypy.ini'
