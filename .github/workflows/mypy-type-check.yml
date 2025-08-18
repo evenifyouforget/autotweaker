@@ -1,6 +1,7 @@
 # This workflow checks Python typing issues using Mypy.
 # It runs automatically on every push to the main branch and for every pull request,
 # providing inline annotations for type errors directly in the pull request view.
+# Mypy's strictness is configured via the 'mypy.ini' file in your repository root.
 
 name: Mypy Type Check
 
@@ -42,17 +43,14 @@ jobs:
           fi
 
       # Step 4: Run Mypy using a dedicated GitHub Action
-      # This action handles Mypy execution and creates inline annotations on your PR.
-      # The 'mypy_flags' input is used to pass your desired loosening flags.
-      - name: Run Mypy with Annotations (Looser Check)
+      # This action will now pick up its configuration from the 'mypy.ini' file.
+      - name: Run Mypy with Annotations (Configured by mypy.ini)
         # Using 'releases/v1.3' which is the latest stable release tag available for this action
         uses: sasanquaneuf/mypy-github-action@releases/v1.3
         with:
-          # Pass the flags for looser checking, suitable for partially typed codebases.
-          # These flags will ignore missing imports, allow untyped function definitions,
-          # and relax strict None checks.
-          mypy_flags: "--ignore-missing-imports --allow-untyped-defs --no-strict-optional"
-          # Optionally, you can specify a Mypy version for stability
-          # mypy_version: '1.8.0'
-          # If you have a mypy.ini or pyproject.toml for configuration:
-          # mypy_config_file: 'mypy.ini'
+          # The 'mypy_flags' input is not supported by this action.
+          # Mypy will automatically look for 'mypy.ini' in the repository root.
+          # You can specify a check name if desired (optional)
+          # checkName: 'Python Type Checking'
+          # If you want to specify a custom config file path (e.g., if not at root):
+          # mypy_config_file: 'path/to/your/mypy.ini'
