@@ -1,7 +1,7 @@
 import numpy as np
 import math
 import warnings
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 from get_design import FCDesignStruct, FCPieceStruct
 from PIL import Image, ImageDraw, ImageFont
 
@@ -230,7 +230,7 @@ def upscale_image(image: np.ndarray, scale_factor: int) -> np.ndarray:
     
     return np.repeat(np.repeat(image, scale_factor, axis=0), scale_factor, axis=1)
 
-def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List, 
+def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List[Dict[str, float]], 
                           design_struct: FCDesignStruct = None) -> Image.Image:
     """
     Draw waypoints preview on an RGB image with path visualization. Includes:
