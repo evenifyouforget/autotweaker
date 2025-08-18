@@ -16,10 +16,10 @@ def auto_login_get_user_id() -> Optional[int]:
     username = os.environ.get('FC_USERNAME')
     password = os.environ.get('FC_PASSWORD')
     if not username:
-        warnings.warn('FC_USERNAME not set, cannot login')
+        warnings.warn('FC_USERNAME not set, cannot login. Alternatively, use FC_USER_ID')
         return None
     if not password:
-        warnings.warn('FC_PASSWORD not set, cannot login')
+        warnings.warn('FC_PASSWORD not set, cannot login. Alternatively, use FC_USER_ID')
         return None
     login_struct = fc_login(username, password)
     if not login_struct.success:
