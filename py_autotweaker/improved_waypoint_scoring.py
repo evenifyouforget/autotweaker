@@ -94,8 +94,8 @@ def detect_local_valleys_proper(screenshot: np.ndarray, waypoints: List[Dict[str
     
     Returns the fraction of ants that get stuck in local minima.
     """
-    if len(waypoints) == 0:
-        return 0.0  # No waypoints, no valleys to get stuck in
+    # NOTE: Empty waypoint lists should still be tested! 
+    # Ants with no waypoints are MORE likely to get stuck, not less.
     
     # Find source positions
     sources = [(x, y) for y, x in zip(*np.where(screenshot == 3))]
