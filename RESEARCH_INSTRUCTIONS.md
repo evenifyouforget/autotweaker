@@ -138,6 +138,10 @@ Evidence should always win, even if it tells us to use something counterintuitiv
 
 Now that we effectively have a grader, it's time to start making some contestants.
 
+Start with setting up the base class and just the null algorithm as a subclass, and a tournament test rig to gather all the subclasses, run them all, and rank their relative performance.
+
+Considering we are generating a score per contestant per test case, and these scores may be in very different ranges, you will need to come up with some way to combine these into a comprehensive and sensible overall rank and score for each contestant.
+
 ## The null algorithm
 
 An empty waypoints list is always valid. It's the baseline. If the empty waypoints list is not valid, either the grader is wrong, or there is genuinely an issue with the level itself (sink not reachable from source, for example).
@@ -176,11 +180,17 @@ If we have the tournament, we might as well make use of it!
 
 * Try all kinds of algorithms. Bad algorithms will just be rejected anyway, there's no harm in experimenting
 * Try non-deterministic, stochastic, or optimizing algorithms, rather than only static deterministic algorithms. Maybe guided optimization will produce better results?
+* Try variations on current winners. Can we do even better?
 * Think about other ways the problem could be approached, given the requirements and information available to the algorithm
 * Search online for inspiration
 * Try more weird things
+
+You may also want to start timing or profiling.
+While this is R&D, excessive runtimes may end up being a concern, and hinder further research.
 
 # Test cases
 
 See maze_like_levels.tsv for a list of level IDs for levels that don't use very weird features, and therefore, should be easy to process in the framework.
 Though, easy to process doesn't mean easy to generate waypoints for.
+
+You may want to sanity check each level that a sink is actually reachable from every source, and if not, exclude it from the tournament.
