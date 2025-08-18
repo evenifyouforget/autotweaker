@@ -141,8 +141,13 @@ def run_comprehensive_tournament(max_levels: Optional[int] = None,
     
     # Create tournament
     if use_creative:
-        tournament = create_creative_tournament()
-        print(f"Using creative tournament with {len(tournament.generators)} algorithms")
+        try:
+            tournament = create_creative_tournament()
+            print(f"Using creative tournament with {len(tournament.generators)} algorithms")
+        except ImportError:
+            print("Warning: Creative tournament not available, using default")
+            tournament = create_default_tournament()
+            print(f"Using default tournament with {len(tournament.generators)} algorithms")
     else:
         tournament = create_default_tournament()
         print(f"Using default tournament with {len(tournament.generators)} algorithms")
@@ -352,7 +357,7 @@ def main():
     max_levels = args.max_levels
     if args.fast:
         max_levels = 20  # Fast mode: only 20 levels
-        use_creative = False
+        use_creative = True  # Still use creative algorithms in fast mode
     else:
         use_creative = args.creative
     

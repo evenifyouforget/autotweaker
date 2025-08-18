@@ -34,7 +34,18 @@ def run_synthetic_tournament(use_advanced: bool = False, verbose: bool = True) -
     print("Running tournament on synthetic levels...")
     
     if use_advanced:
-        tournament = create_advanced_tournament()
+        try:
+            from quick_creative_generators import create_quick_creative_tournament
+            tournament = create_quick_creative_tournament()
+            print(f"Using quick creative tournament with {len(tournament.generators)} algorithms")
+        except ImportError:
+            try:
+                from creative_waypoint_generators import create_creative_tournament
+                tournament = create_creative_tournament()
+                print(f"Using full creative tournament with {len(tournament.generators)} algorithms")
+            except ImportError:
+                print("Warning: Creative algorithms not available, using advanced tournament")
+                tournament = create_advanced_tournament()
     else:
         tournament = create_default_tournament()
     
@@ -52,7 +63,21 @@ def run_real_level_tournament(max_levels: int = 10, use_advanced: bool = False,
     """Run tournament on real levels from maze_like_levels.tsv."""
     print(f"Running tournament on up to {max_levels} real levels...")
     
-    # Load level IDs
+    if use_advanced:
+        print("Using full comprehensive tournament system with creative algorithms...")
+        try:
+            from full_tournament_runner import run_comprehensive_tournament
+            return run_comprehensive_tournament(
+                max_levels=max_levels, 
+                use_creative=True,
+                use_improved_scoring=True,
+                verbose=verbose,
+                save_results=True
+            )
+        except ImportError:
+            print("Warning: Comprehensive tournament not available, falling back to basic")
+    
+    # Fallback to basic tournament
     tsv_path = os.path.join(os.path.dirname(__file__), '..', 'maze_like_levels.tsv')
     level_ids = load_maze_like_levels(tsv_path)
     
@@ -141,9 +166,13 @@ def main():
     parser.add_argument('--mode', choices=['synthetic', 'real', 'mixed', 'list'], default='synthetic',
                        help='Tournament mode (default: synthetic)')
     parser.add_argument('--max-levels', type=int, default=10,
-                       help='Maximum number of real levels to test (default: 10)')
+                       help='Maximum number of real levels to test (default: 10, use 100 for full database)')
     parser.add_argument('--advanced', action='store_true',
-                       help='Include advanced algorithms (slower)')
+                       help='Include all creative algorithms and comprehensive analysis (slower)')
+    parser.add_argument('--full', action='store_true',
+                       help='Test all 100 levels with comprehensive analysis (equivalent to --max-levels 100 --advanced)')
+    parser.add_argument('--comprehensive', action='store_true',
+                       help='Use full comprehensive algorithms (slower, more thorough)')
     parser.add_argument('--quiet', action='store_true',
                        help='Reduce output verbosity')
     parser.add_argument('--list-algorithms', action='store_true',
@@ -151,19 +180,30 @@ def main():
     
     args = parser.parse_args()
     
+    # Handle --full flag
+    if args.full:
+        args.max_levels = 100
+        args.advanced = True
+        print("Full tournament mode: Testing all 100 levels with creative algorithms")
+    
     if args.list_algorithms or args.mode == 'list':
         print("Available Algorithms:")
-        print("Basic algorithms:")
+        print("Basic algorithms (always included):")
         print("  - Null: Empty waypoint list (baseline)")
         print("  - CornerTurning: Recursive corner detection")
         
         if args.advanced:
-            print("Advanced algorithms:")
-            print("  - MedialAxis: Uses skeleton of passable areas")
-            print("  - Voronoi: Places waypoints at maximal distance from walls")
-            print("  - OptimizedSearch: Simulated annealing optimization")
+            print("Creative algorithms (--advanced flag):")
+            print("  - Genetic: Evolutionary optimization of waypoint populations")
+            print("  - FlowField: Potential field analysis with critical point detection")
+            print("  - SwarmIntelligence: Particle swarm optimization")  
+            print("  - AdaptiveRandom: Random sampling with learning")
+            print("  - ImprovedCornerTurning: Physics-based balloon expansion")
+            print("  - MedialAxis: Skeleton-based waypoint placement")
+            print("  - Voronoi: Distance transform optimization")
+            print("  - OptimizedSearch: Simulated annealing")
         else:
-            print("\nUse --advanced to see advanced algorithms")
+            print("\nUse --advanced to see all creative algorithms (8+ total)")
         return
     
     verbose = not args.quiet

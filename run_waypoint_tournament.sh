@@ -47,17 +47,19 @@ MODES:
     list               List available algorithms
 
 OPTIONS:
-    --max-levels N     Maximum real levels to test (default: 10)
-    --advanced         Include advanced algorithms (slower)
+    --max-levels N     Maximum real levels to test (default: 10, use 100 for full database)
+    --advanced         Include all creative algorithms (8+ total, slower but comprehensive)
+    --full             Test all 100 levels with creative algorithms (comprehensive analysis)
     --quiet            Reduce output verbosity
     --help             Show this help message
 
 EXAMPLES:
-    $0                          # Quick synthetic test
-    $0 synthetic --advanced     # Synthetic with advanced algorithms
-    $0 real --max-levels 5      # Test 5 real levels
-    $0 mixed --max-levels 3     # Mixed test with 3 real levels
-    $0 list --advanced          # List all algorithms
+    $0                          # Quick synthetic test (2 basic algorithms)
+    $0 synthetic --advanced     # Synthetic with all 8+ creative algorithms  
+    $0 real --max-levels 5      # Test 5 real levels (basic algorithms)
+    $0 real --advanced          # Test 10 real levels with creative algorithms
+    $0 real --full              # FULL TEST: All 100 levels with all algorithms
+    $0 list --advanced          # List all algorithms including creative ones
 
 REQUIREMENTS:
     - Internet connection (for real level mode)
@@ -85,6 +87,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --advanced)
             ADVANCED_FLAG="--advanced"
+            shift
+            ;;
+        --full)
+            ADVANCED_FLAG="--full"
             shift
             ;;
         --quiet)
