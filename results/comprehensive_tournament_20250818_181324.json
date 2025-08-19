@@ -1,0 +1,290 @@
+{
+  "tournament_results": {
+    "Null": {
+      "scores": [
+        676.7441860465117,
+        0.0,
+        0.0
+      ],
+      "times": [
+        3.5762786865234375e-06,
+        2.86102294921875e-06,
+        1.9073486328125e-06
+      ],
+      "waypoint_counts": [
+        0,
+        0,
+        0
+      ],
+      "successful_runs": 3,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": 225.58139534883722,
+      "total_score": 676.7441860465117,
+      "avg_time": 2.781550089518229e-06,
+      "avg_waypoints": 0.0
+    },
+    "CornerTurning": {
+      "scores": [
+        651.219512195122,
+        0.0,
+        668.75,
+        26.096385542168676,
+        14.048192771084338,
+        0.0
+      ],
+      "times": [
+        0.10071086883544922,
+        0.0011713504791259766,
+        0.12839984893798828,
+        0.032889604568481445,
+        0.05386614799499512,
+        0.005156278610229492
+      ],
+      "waypoint_counts": [
+        0,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "successful_runs": 6,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": 226.68568175139583,
+      "total_score": 1360.114090508375,
+      "avg_time": 0.05369901657104492,
+      "avg_waypoints": 0.3333333333333333
+    },
+    "Genetic": {
+      "scores": [],
+      "times": [],
+      "waypoint_counts": [],
+      "successful_runs": 0,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": Infinity,
+      "total_score": Infinity,
+      "avg_time": 0.0,
+      "avg_waypoints": 0.0
+    },
+    "FlowField": {
+      "scores": [
+        10759.406146326986,
+        10757.0,
+        10760.974964578601
+      ],
+      "times": [
+        1.0700914859771729,
+        0.5184228420257568,
+        2.0331170558929443
+      ],
+      "waypoint_counts": [
+        6,
+        6,
+        6
+      ],
+      "successful_runs": 3,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": 10759.12703696853,
+      "total_score": 32277.38111090559,
+      "avg_time": 1.2072104612986247,
+      "avg_waypoints": 6.0
+    },
+    "SwarmIntelligence": {
+      "scores": [],
+      "times": [],
+      "waypoint_counts": [],
+      "successful_runs": 0,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": Infinity,
+      "total_score": Infinity,
+      "avg_time": 0.0,
+      "avg_waypoints": 0.0
+    },
+    "AdaptiveRandom": {
+      "scores": [],
+      "times": [],
+      "waypoint_counts": [],
+      "successful_runs": 0,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": Infinity,
+      "total_score": Infinity,
+      "avg_time": 0.0,
+      "avg_waypoints": 0.0
+    }
+  },
+  "execution_summary": {
+    "total_time_seconds": 7.54868745803833,
+    "total_tasks": 21,
+    "successful_tasks": 12,
+    "failed_tasks": 0,
+    "timeout_tasks": 9,
+    "tasks_per_second": 2.7819405846029355,
+    "best_generator": "Null",
+    "test_case_count": 3,
+    "generator_count": 7
+  },
+  "configuration": {
+    "max_workers": 16,
+    "timeout_per_algorithm": 5.0,
+    "use_subprocess": true
+  },
+  "category_analysis": {
+    "basic": {
+      "algorithm_count": 2,
+      "successful_count": 2,
+      "best_algorithm": "Null",
+      "avg_category_score": 226.13353855011653,
+      "success_rate": 1.0
+    },
+    "creative": {
+      "algorithm_count": 4,
+      "successful_count": 1,
+      "best_algorithm": "FlowField",
+      "avg_category_score": 10759.12703696853,
+      "success_rate": 0.25
+    }
+  },
+  "algorithm_categories": {
+    "basic": {
+      "Null": {
+        "scores": [
+          676.7441860465117,
+          0.0,
+          0.0
+        ],
+        "times": [
+          3.5762786865234375e-06,
+          2.86102294921875e-06,
+          1.9073486328125e-06
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 225.58139534883722,
+        "total_score": 676.7441860465117,
+        "avg_time": 2.781550089518229e-06,
+        "avg_waypoints": 0.0
+      },
+      "CornerTurning": {
+        "scores": [
+          651.219512195122,
+          0.0,
+          668.75,
+          26.096385542168676,
+          14.048192771084338,
+          0.0
+        ],
+        "times": [
+          0.10071086883544922,
+          0.0011713504791259766,
+          0.12839984893798828,
+          0.032889604568481445,
+          0.05386614799499512,
+          0.005156278610229492
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        "successful_runs": 6,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 226.68568175139583,
+        "total_score": 1360.114090508375,
+        "avg_time": 0.05369901657104492,
+        "avg_waypoints": 0.3333333333333333
+      }
+    },
+    "creative": {
+      "Genetic": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "FlowField": {
+        "scores": [
+          10759.406146326986,
+          10757.0,
+          10760.974964578601
+        ],
+        "times": [
+          1.0700914859771729,
+          0.5184228420257568,
+          2.0331170558929443
+        ],
+        "waypoint_counts": [
+          6,
+          6,
+          6
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10759.12703696853,
+        "total_score": 32277.38111090559,
+        "avg_time": 1.2072104612986247,
+        "avg_waypoints": 6.0
+      },
+      "SwarmIntelligence": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "AdaptiveRandom": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      }
+    },
+    "weird": {}
+  },
+  "surprise_findings": []
+}
