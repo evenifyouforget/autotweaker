@@ -46,28 +46,38 @@ def normalize_screenshot_colors(screenshot: np.ndarray) -> np.ndarray:
     - 4 = sink (red/magenta)
     - 0 = passable air (everything else)
     """
-    normalized = np.zeros_like(screenshot)
-    
-    # Convert RGB to single values if needed
     if len(screenshot.shape) == 3:
-        # Convert RGB screenshot to grayscale-like classification
-        # This is a simplified approach - may need adjustment based on actual colors
+        # Convert RGB to single channel classification
+        height, width = screenshot.shape[:2]
+        normalized = np.zeros((height, width), dtype=np.int32)
+        
+        # Convert to RGB values
+        r, g, b = screenshot[:, :, 0], screenshot[:, :, 1], screenshot[:, :, 2]
+        
+        # Grayscale for wall detection
         grayscale = np.mean(screenshot, axis=2)
         
-        # Dark pixels -> walls
-        normalized[grayscale < 50] = 1
+        # Dark pixels -> walls (black or very dark)
+        wall_mask = grayscale < 50
+        normalized[wall_mask] = 1
         
-        # Blue-ish pixels -> sources (approximate)
-        blue_mask = (screenshot[:, :, 2] > screenshot[:, :, 0]) & (screenshot[:, :, 2] > screenshot[:, :, 1])
+        # Blue-ish pixels -> sources
+        # Blue component significantly higher than red/green
+        blue_threshold = 200  # Adjust based on actual colors
+        blue_mask = (b > blue_threshold) & (b > r + 30) & (b > g + 30) & ~wall_mask
         normalized[blue_mask] = 3
         
-        # Red-ish pixels -> sinks (approximate)
-        red_mask = (screenshot[:, :, 0] > screenshot[:, :, 1]) & (screenshot[:, :, 0] > screenshot[:, :, 2])
+        # Red-ish pixels -> sinks
+        # Red component significantly higher than blue/green
+        red_threshold = 200
+        red_mask = (r > red_threshold) & (r > b + 30) & (r > g + 30) & ~wall_mask
         normalized[red_mask] = 4
         
+        # Everything else is passable air (0)
+        
     else:
-        # Already single channel, just copy and normalize
-        normalized = screenshot.copy()
+        # Already single channel
+        normalized = screenshot.astype(np.int32)
         # Ensure only expected values exist
         normalized[(normalized != 1) & (normalized != 3) & (normalized != 4)] = 0
     
@@ -124,7 +134,7 @@ class FirelightContestant:
             # Score statistics
             'avg_final_score': statistics.mean(final_scores) if final_scores else float('inf'),
             'best_final_score': min(final_scores) if final_scores else float('inf'),
-            'score_stdev': statistics.stdev(final_scores) if len(final_scores) > 1 else 0.0
+            'score_stdev': statistics.stdev(final_scores) if len(final_scores) > 1 and all(isinstance(x, (int, float)) and not np.isinf(x) for x in final_scores) else 0.0
         }
 
 
@@ -233,15 +243,15 @@ class FirelightTournament:
             # Build command
             autotweaker_dir = Path(__file__).parent.parent
             cmd = [
-                'python3', '-m', 'py_autotweaker.run_local',
+                './run_local.sh',
                 'local',
                 '-d', str(self.design_id),
                 '-c', temp_config_path,
-                '--autotweak',
-                '--timeout-seconds', str(self.timeout_per_run),
-                '--max-threads', '1',  # Single thread per run for consistency
-                '--stop-on-win',
-                '--upload-best-k', '0'  # Don't upload during tournament
+                '-a',  # --do-autotweak
+                '-t', str(self.timeout_per_run),
+                '-n', '1',  # Single thread per run for consistency
+                '-w',  # --stop-on-win
+                '-k', '0'  # Don't upload during tournament
             ]
             
             # Run autotweaker with timeout
