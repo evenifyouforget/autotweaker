@@ -461,7 +461,12 @@ def create_default_tournament() -> WaypointTournament:
     tournament.add_generator(NullGenerator())
     tournament.add_generator(CornerTurningGenerator())
     
-    # Add some variations
-    tournament.add_generator(CornerTurningGenerator(max_waypoints=10, balloon_iterations=30))
+    # Add variation with different name to avoid confusion
+    class EnhancedCornerTurningGenerator(CornerTurningGenerator):
+        def __init__(self):
+            super().__init__(max_waypoints=10, balloon_iterations=30)
+            self.name = "EnhancedCornerTurning"
+    
+    tournament.add_generator(EnhancedCornerTurningGenerator())
     
     return tournament

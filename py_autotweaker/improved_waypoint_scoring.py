@@ -305,13 +305,22 @@ def _check_coverage_gaps(screenshot: np.ndarray, waypoints: List[Dict[str, float
     Check for areas where ants might get lost due to poor waypoint coverage.
     
     This looks for large passable areas that are far from any waypoint.
+    The penalty is scaled based on the number of waypoints to be fair to sparse algorithms.
     """
-    if len(waypoints) == 0:
+    if len(waypoints) <= 1:
+        # Don't penalize algorithms with 0 or 1 waypoint for coverage gaps
+        # Single waypoints are meant to guide through specific bottlenecks, not provide full coverage
         return 0.0
     
     height, width = screenshot.shape
     gap_penalty = 0.0
     sample_spacing = max(8, min(width, height) // 15)
+    
+    # Scale distance threshold based on number of waypoints and level size
+    # More waypoints = expect better coverage = smaller threshold
+    level_diagonal = math.sqrt(width**2 + height**2)
+    base_threshold = min(60.0, level_diagonal / (len(waypoints) + 1))
+    distance_threshold = max(30.0, base_threshold)  # Minimum 30px, maximum based on level size
     
     for y in range(0, height, sample_spacing):
         for x in range(0, width, sample_spacing):
@@ -323,8 +332,10 @@ def _check_coverage_gaps(screenshot: np.ndarray, waypoints: List[Dict[str, float
                     min_waypoint_dist = min(min_waypoint_dist, dist)
                 
                 # Penalty if too far from any waypoint
-                if min_waypoint_dist > 40.0:
-                    gap_penalty += (min_waypoint_dist - 40.0) * 0.5
+                if min_waypoint_dist > distance_threshold:
+                    # Scale penalty by waypoint density - more waypoints = higher penalty for gaps
+                    penalty_multiplier = 0.1 * len(waypoints)  # 0.1 per waypoint
+                    gap_penalty += (min_waypoint_dist - distance_threshold) * penalty_multiplier
     
     return gap_penalty
 
