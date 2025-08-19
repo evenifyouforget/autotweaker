@@ -210,7 +210,8 @@ def score_waypoint_quality(screenshot: np.ndarray, waypoints: List[Dict[str, flo
 
 def improved_score_waypoint_list(screenshot: np.ndarray, waypoints: List[Dict[str, float]], 
                                 penalize_skippable: bool = True, 
-                                feature_flags: Optional[Dict[str, bool]] = None) -> float:
+                                feature_flags: Optional[Dict[str, bool]] = None,
+                                valley_detection_method: str = 'original') -> float:
     """
     Improved scoring function with better local valley detection and evidence-based metrics.
     
@@ -250,9 +251,23 @@ def improved_score_waypoint_list(screenshot: np.ndarray, waypoints: List[Dict[st
         quality_score = score_waypoint_quality(screenshot, waypoints)
         score += quality_score * 1.0  # Primary component
     
-    # Local valley detection (proper implementation)
+    # Local valley detection (configurable method)
     if feature_flags.get('check_local_valleys_proper', True):
-        valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        if valley_detection_method == 'systematic':
+            try:
+                from .advanced_valley_detection import systematic_valley_detection
+                valley_fraction, _ = systematic_valley_detection(screenshot, waypoints, granularity=2)
+            except ImportError:
+                valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        elif valley_detection_method == 'quick_numpy':
+            try:
+                from .advanced_valley_detection import quick_valley_detection_numpy
+                valley_fraction = quick_valley_detection_numpy(screenshot, waypoints)
+            except ImportError:
+                valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        else:  # 'original'
+            valley_fraction = detect_local_valleys_proper(screenshot, waypoints, num_samples=30)
+        
         score += valley_fraction * 500.0  # Heavy penalty for valleys
     
     # Path efficiency (accurate calculation)
@@ -290,13 +305,22 @@ def _check_coverage_gaps(screenshot: np.ndarray, waypoints: List[Dict[str, float
     Check for areas where ants might get lost due to poor waypoint coverage.
     
     This looks for large passable areas that are far from any waypoint.
+    The penalty is scaled based on the number of waypoints to be fair to sparse algorithms.
     """
-    if len(waypoints) == 0:
+    if len(waypoints) <= 1:
+        # Don't penalize algorithms with 0 or 1 waypoint for coverage gaps
+        # Single waypoints are meant to guide through specific bottlenecks, not provide full coverage
         return 0.0
     
     height, width = screenshot.shape
     gap_penalty = 0.0
     sample_spacing = max(8, min(width, height) // 15)
+    
+    # Scale distance threshold based on number of waypoints and level size
+    # More waypoints = expect better coverage = smaller threshold
+    level_diagonal = math.sqrt(width**2 + height**2)
+    base_threshold = min(60.0, level_diagonal / (len(waypoints) + 1))
+    distance_threshold = max(30.0, base_threshold)  # Minimum 30px, maximum based on level size
     
     for y in range(0, height, sample_spacing):
         for x in range(0, width, sample_spacing):
@@ -308,8 +332,10 @@ def _check_coverage_gaps(screenshot: np.ndarray, waypoints: List[Dict[str, float
                     min_waypoint_dist = min(min_waypoint_dist, dist)
                 
                 # Penalty if too far from any waypoint
-                if min_waypoint_dist > 40.0:
-                    gap_penalty += (min_waypoint_dist - 40.0) * 0.5
+                if min_waypoint_dist > distance_threshold:
+                    # Scale penalty by waypoint density - more waypoints = higher penalty for gaps
+                    penalty_multiplier = 0.1 * len(waypoints)  # 0.1 per waypoint
+                    gap_penalty += (min_waypoint_dist - distance_threshold) * penalty_multiplier
     
     return gap_penalty
 

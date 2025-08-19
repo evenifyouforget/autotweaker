@@ -1,0 +1,1150 @@
+{
+  "original": {
+    "tournament_results": {
+      "Null": {
+        "scores": [
+          0.0,
+          651.8072289156627,
+          0.0
+        ],
+        "times": [
+          2.86102294921875e-06,
+          2.1457672119140625e-06,
+          2.6226043701171875e-06
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 217.2690763052209,
+        "total_score": 651.8072289156627,
+        "avg_time": 2.5431315104166665e-06,
+        "avg_waypoints": 0.0
+      },
+      "CornerTurning": {
+        "scores": [
+          25.52941176470588,
+          0.0,
+          640.4761904761905
+        ],
+        "times": [
+          0.02661919593811035,
+          0.0013689994812011719,
+          0.19268178939819336
+        ],
+        "waypoint_counts": [
+          1,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 222.0018674136321,
+        "total_score": 666.0056022408963,
+        "avg_time": 0.07355666160583496,
+        "avg_waypoints": 0.3333333333333333
+      },
+      "EnhancedCornerTurning": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "QuickGenetic": {
+        "scores": [
+          0.0,
+          0.0,
+          687.8048780487804
+        ],
+        "times": [
+          0.4507863521575928,
+          1.6426291465759277,
+          1.5545506477355957
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 229.2682926829268,
+        "total_score": 687.8048780487804,
+        "avg_time": 1.2159887154897053,
+        "avg_waypoints": 0.0
+      },
+      "QuickFlowField": {
+        "scores": [
+          0.0,
+          674.0259740259739,
+          2.0
+        ],
+        "times": [
+          0.0006549358367919922,
+          0.0008094310760498047,
+          0.0009872913360595703
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          1
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 225.3419913419913,
+        "total_score": 676.0259740259739,
+        "avg_time": 0.0008172194163004557,
+        "avg_waypoints": 0.3333333333333333
+      },
+      "QuickSwarm": {
+        "scores": [
+          0.0,
+          627.710843373494
+        ],
+        "times": [
+          6.510864734649658,
+          6.919254302978516
+        ],
+        "waypoint_counts": [
+          0,
+          0
+        ],
+        "successful_runs": 2,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 313.855421686747,
+        "total_score": 627.710843373494,
+        "avg_time": 6.715059518814087,
+        "avg_waypoints": 0.0
+      },
+      "QuickAdaptive": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "ImprovedCornerTurning": {
+        "scores": [
+          0.0,
+          2.0,
+          702.0
+        ],
+        "times": [
+          0.0012311935424804688,
+          1.1947746276855469,
+          1.3700671195983887
+        ],
+        "waypoint_counts": [
+          0,
+          1,
+          1
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 234.66666666666666,
+        "total_score": 704.0,
+        "avg_time": 0.8553576469421387,
+        "avg_waypoints": 0.6666666666666666
+      },
+      "Chaos": {
+        "scores": [
+          10725.206777946021,
+          10019.738544673262,
+          10751.828819032842
+        ],
+        "times": [
+          5.6743621826171875e-05,
+          6.29425048828125e-05,
+          0.00010013580322265625
+        ],
+        "waypoint_counts": [
+          3,
+          2,
+          5
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10498.924713884042,
+        "total_score": 31496.774141652124,
+        "avg_time": 7.32739766438802e-05,
+        "avg_waypoints": 3.3333333333333335
+      },
+      "Anti": {
+        "scores": [
+          10710.006510280045,
+          706.8270036124956,
+          10776.385741708535
+        ],
+        "times": [
+          0.0007410049438476562,
+          0.008730173110961914,
+          0.000579833984375
+        ],
+        "waypoint_counts": [
+          3,
+          3,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 7397.739751867025,
+        "total_score": 22193.219255601074,
+        "avg_time": 0.003350337346394857,
+        "avg_waypoints": 3.0
+      },
+      "Mega": {
+        "scores": [
+          10002.0,
+          2.0,
+          10647.121951219513
+        ],
+        "times": [
+          0.004633188247680664,
+          0.0004596710205078125,
+          0.0004458427429199219
+        ],
+        "waypoint_counts": [
+          1,
+          1,
+          1
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 6883.707317073171,
+        "total_score": 20651.121951219513,
+        "avg_time": 0.0018462340037027996,
+        "avg_waypoints": 1.0
+      },
+      "Fibonacci": {
+        "scores": [
+          2.0,
+          10030.837547354962,
+          10706.140416536904
+        ],
+        "times": [
+          0.0006084442138671875,
+          0.0005865097045898438,
+          0.0007224082946777344
+        ],
+        "waypoint_counts": [
+          1,
+          3,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 6912.992654630622,
+        "total_score": 20738.977963891866,
+        "avg_time": 0.0006391207377115885,
+        "avg_waypoints": 2.3333333333333335
+      },
+      "Mirror": {
+        "scores": [
+          657.3170731707316,
+          10704.550273785182,
+          10708.374892381193
+        ],
+        "times": [
+          7.963180541992188e-05,
+          0.00013971328735351562,
+          0.00015282630920410156
+        ],
+        "waypoint_counts": [
+          0,
+          2,
+          2
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 7356.747413112368,
+        "total_score": 22070.242239337105,
+        "avg_time": 0.00012405713399251303,
+        "avg_waypoints": 1.3333333333333333
+      },
+      "Prime": {
+        "scores": [
+          10654.668294904232,
+          10002.0,
+          10152.398852586222
+        ],
+        "times": [
+          0.0001418590545654297,
+          0.0007853507995605469,
+          0.0001506805419921875
+        ],
+        "waypoint_counts": [
+          3,
+          1,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10269.689049163484,
+        "total_score": 30809.067147490452,
+        "avg_time": 0.0003592967987060547,
+        "avg_waypoints": 2.3333333333333335
+      },
+      "TimeBased": {
+        "scores": [
+          0.0,
+          10002.0,
+          10023.377418629794
+        ],
+        "times": [
+          0.00017523765563964844,
+          0.00016450881958007812,
+          0.00017905235290527344
+        ],
+        "waypoint_counts": [
+          0,
+          1,
+          2
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 6675.125806209932,
+        "total_score": 20025.377418629796,
+        "avg_time": 0.00017293294270833334,
+        "avg_waypoints": 1.0
+      },
+      "CornerMagnifier": {
+        "scores": [
+          10780.606285808564,
+          0.0,
+          10715.0
+        ],
+        "times": [
+          0.06441307067871094,
+          0.49185681343078613,
+          0.05701184272766113
+        ],
+        "waypoint_counts": [
+          8,
+          0,
+          5
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 7165.202095269521,
+        "total_score": 21495.606285808564,
+        "avg_time": 0.20442724227905273,
+        "avg_waypoints": 4.333333333333333
+      },
+      "EdgeHugger": {
+        "scores": [
+          10747.673353077345,
+          10874.265511532201,
+          10710.030658714328
+        ],
+        "times": [
+          0.016881227493286133,
+          0.07539534568786621,
+          0.10313105583190918
+        ],
+        "waypoint_counts": [
+          4,
+          4,
+          4
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10777.323174441291,
+        "total_score": 32331.969523323874,
+        "avg_time": 0.06513587633768718,
+        "avg_waypoints": 4.0
+      },
+      "ReinforcementLearning": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "AdaptiveTemplate": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "EvolutionaryStrategy": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "AStarWaypoints": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "SamplingBased": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "MultiAlgorithmFusion": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "NarrowSpaceNavigation": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      }
+    },
+    "execution_summary": {
+      "total_time_seconds": 14.283609628677368,
+      "total_tasks": 72,
+      "successful_tasks": 44,
+      "failed_tasks": 24,
+      "timeout_tasks": 4,
+      "tasks_per_second": 5.040742632411682,
+      "best_generator": "Null",
+      "test_case_count": 3,
+      "generator_count": 24
+    },
+    "configuration": {
+      "max_workers": 16,
+      "timeout_per_algorithm": 12.0,
+      "use_subprocess": true
+    },
+    "level_validation": {
+      "validated": true,
+      "valid_count": 3,
+      "invalid_count": 0
+    },
+    "level_statistics": {
+      "total_levels": 3,
+      "level_characteristics": [
+        {
+          "name": "synthetic_corridor",
+          "characteristics": {
+            "width": 100,
+            "height": 50,
+            "total_pixels": 5000,
+            "walls": "296",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "4704",
+            "wall_ratio": 0.0592,
+            "passable_ratio": 0.9408,
+            "avg_source_sink_distance": 80.0,
+            "complexity_score": 4.736000000000001
+          }
+        },
+        {
+          "name": "synthetic_l_shape",
+          "characteristics": {
+            "width": 60,
+            "height": 60,
+            "total_pixels": 3600,
+            "walls": "2900",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "700",
+            "wall_ratio": 0.8055555555555556,
+            "passable_ratio": 0.19444444444444445,
+            "avg_source_sink_distance": 60.0,
+            "complexity_score": 48.333333333333336
+          }
+        },
+        {
+          "name": "synthetic_multipath",
+          "characteristics": {
+            "width": 80,
+            "height": 40,
+            "total_pixels": 3200,
+            "walls": "616",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "2584",
+            "wall_ratio": 0.1925,
+            "passable_ratio": 0.8075,
+            "avg_source_sink_distance": 70.0,
+            "complexity_score": 13.475
+          }
+        }
+      ]
+    },
+    "scoring_method": "original",
+    "experimental_features": {
+      "learning_algorithms": true,
+      "web_inspired_algorithms": true,
+      "multi_algorithm_fusion": true,
+      "advanced_valley_detection": true
+    }
+  },
+  "systematic": {
+    "tournament_results": {
+      "Null": {
+        "scores": [
+          0.0,
+          663.8554216867469,
+          0.0
+        ],
+        "times": [
+          2.86102294921875e-06,
+          2.384185791015625e-06,
+          2.384185791015625e-06
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 221.28514056224898,
+        "total_score": 663.8554216867469,
+        "avg_time": 2.5431315104166665e-06,
+        "avg_waypoints": 0.0
+      },
+      "CornerTurning": {
+        "scores": [
+          42.697674418604656,
+          616.6666666666667,
+          0.0
+        ],
+        "times": [
+          0.02848958969116211,
+          0.25107550621032715,
+          0.0011768341064453125
+        ],
+        "waypoint_counts": [
+          1,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 219.78811369509046,
+        "total_score": 659.3643410852713,
+        "avg_time": 0.0935806433359782,
+        "avg_waypoints": 0.3333333333333333
+      },
+      "EnhancedCornerTurning": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "QuickGenetic": {
+        "scores": [
+          664.7058823529412,
+          0.0,
+          0.0
+        ],
+        "times": [
+          1.2058908939361572,
+          1.0879642963409424,
+          3.3118691444396973
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 221.56862745098042,
+        "total_score": 664.7058823529412,
+        "avg_time": 1.8685747782389324,
+        "avg_waypoints": 0.0
+      },
+      "QuickFlowField": {
+        "scores": [
+          2.0,
+          0.0,
+          681.25
+        ],
+        "times": [
+          0.0008699893951416016,
+          0.0006341934204101562,
+          0.0006277561187744141
+        ],
+        "waypoint_counts": [
+          1,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 227.75,
+        "total_score": 683.25,
+        "avg_time": 0.0007106463114420573,
+        "avg_waypoints": 0.3333333333333333
+      },
+      "QuickSwarm": {
+        "scores": [
+          0.0,
+          651.219512195122
+        ],
+        "times": [
+          5.502523183822632,
+          5.790852069854736
+        ],
+        "waypoint_counts": [
+          0,
+          0
+        ],
+        "successful_runs": 2,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 325.609756097561,
+        "total_score": 651.219512195122,
+        "avg_time": 5.646687626838684,
+        "avg_waypoints": 0.0
+      },
+      "QuickAdaptive": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "ImprovedCornerTurning": {
+        "scores": [
+          702.0,
+          0.0,
+          2.0
+        ],
+        "times": [
+          0.9831857681274414,
+          0.0011746883392333984,
+          0.7098324298858643
+        ],
+        "waypoint_counts": [
+          1,
+          0,
+          1
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 234.66666666666666,
+        "total_score": 704.0,
+        "avg_time": 0.5647309621175131,
+        "avg_waypoints": 0.6666666666666666
+      },
+      "Chaos": {
+        "scores": [
+          10706.98805924019,
+          10710.224423426826,
+          10799.991337506832
+        ],
+        "times": [
+          6.175041198730469e-05,
+          8.678436279296875e-05,
+          6.842613220214844e-05
+        ],
+        "waypoint_counts": [
+          3,
+          5,
+          5
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10739.067940057948,
+        "total_score": 32217.203820173847,
+        "avg_time": 7.232030232747395e-05,
+        "avg_waypoints": 4.333333333333333
+      },
+      "Anti": {
+        "scores": [
+          10722.079809744135,
+          10726.935605944425,
+          11059.899918331237
+        ],
+        "times": [
+          0.003618478775024414,
+          0.0010347366333007812,
+          0.0004858970642089844
+        ],
+        "waypoint_counts": [
+          3,
+          3,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10836.305111339932,
+        "total_score": 32508.915334019795,
+        "avg_time": 0.0017130374908447266,
+        "avg_waypoints": 3.0
+      },
+      "Mega": {
+        "scores": [
+          10628.829268292682,
+          2.0,
+          10002.0
+        ],
+        "times": [
+          0.0004780292510986328,
+          0.00041556358337402344,
+          0.0005443096160888672
+        ],
+        "waypoint_counts": [
+          1,
+          1,
+          1
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 6877.609756097561,
+        "total_score": 20632.829268292684,
+        "avg_time": 0.00047930081685384113,
+        "avg_waypoints": 1.0
+      },
+      "Fibonacci": {
+        "scores": [
+          2.0,
+          10706.140416536904,
+          10030.837547354962
+        ],
+        "times": [
+          0.0006632804870605469,
+          0.0007023811340332031,
+          0.000659942626953125
+        ],
+        "waypoint_counts": [
+          1,
+          3,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 6912.992654630622,
+        "total_score": 20738.977963891866,
+        "avg_time": 0.000675201416015625,
+        "avg_waypoints": 2.3333333333333335
+      },
+      "Mirror": {
+        "scores": [
+          10704.0,
+          10704.920012349168,
+          10704.563991842151
+        ],
+        "times": [
+          0.0001609325408935547,
+          0.0001399517059326172,
+          0.00017714500427246094
+        ],
+        "waypoint_counts": [
+          2,
+          2,
+          2
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10704.494668063773,
+        "total_score": 32113.48400419132,
+        "avg_time": 0.00015934308369954428,
+        "avg_waypoints": 2.0
+      },
+      "Prime": {
+        "scores": [
+          10002.0,
+          10649.112739348675,
+          10151.83187880876
+        ],
+        "times": [
+          0.0003161430358886719,
+          0.00017905235290527344,
+          0.0002493858337402344
+        ],
+        "waypoint_counts": [
+          1,
+          3,
+          3
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10267.648206052478,
+        "total_score": 30802.944618157435,
+        "avg_time": 0.00024819374084472656,
+        "avg_waypoints": 2.3333333333333335
+      },
+      "TimeBased": {
+        "scores": [
+          2.0,
+          10704.097884676743,
+          10787.67581431214
+        ],
+        "times": [
+          0.00014734268188476562,
+          0.00020647048950195312,
+          0.00018548965454101562
+        ],
+        "waypoint_counts": [
+          1,
+          2,
+          2
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 7164.591232996295,
+        "total_score": 21493.773698988884,
+        "avg_time": 0.00017976760864257812,
+        "avg_waypoints": 1.6666666666666667
+      },
+      "CornerMagnifier": {
+        "scores": [
+          10780.606285808564,
+          0.0,
+          10715.0
+        ],
+        "times": [
+          0.14239716529846191,
+          0.3089759349822998,
+          0.12957978248596191
+        ],
+        "waypoint_counts": [
+          8,
+          0,
+          5
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 7165.202095269521,
+        "total_score": 21495.606285808564,
+        "avg_time": 0.1936509609222412,
+        "avg_waypoints": 4.333333333333333
+      },
+      "EdgeHugger": {
+        "scores": [
+          10011.155221942758,
+          10708.705904139415,
+          10202.495800141542
+        ],
+        "times": [
+          0.0625905990600586,
+          0.09080338478088379,
+          0.005680084228515625
+        ],
+        "waypoint_counts": [
+          3,
+          4,
+          4
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 10307.452308741238,
+        "total_score": 30922.356926223714,
+        "avg_time": 0.053024689356486,
+        "avg_waypoints": 3.6666666666666665
+      },
+      "ReinforcementLearning": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "AdaptiveTemplate": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "EvolutionaryStrategy": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "AStarWaypoints": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "SamplingBased": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "MultiAlgorithmFusion": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      },
+      "NarrowSpaceNavigation": {
+        "scores": [],
+        "times": [],
+        "waypoint_counts": [],
+        "successful_runs": 0,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": Infinity,
+        "total_score": Infinity,
+        "avg_time": 0.0,
+        "avg_waypoints": 0.0
+      }
+    },
+    "execution_summary": {
+      "total_time_seconds": 14.728769302368164,
+      "total_tasks": 72,
+      "successful_tasks": 44,
+      "failed_tasks": 24,
+      "timeout_tasks": 4,
+      "tasks_per_second": 4.888392133918717,
+      "best_generator": "CornerTurning",
+      "test_case_count": 3,
+      "generator_count": 24
+    },
+    "configuration": {
+      "max_workers": 16,
+      "timeout_per_algorithm": 12.0,
+      "use_subprocess": true
+    },
+    "level_validation": {
+      "validated": true,
+      "valid_count": 3,
+      "invalid_count": 0
+    },
+    "level_statistics": {
+      "total_levels": 3,
+      "level_characteristics": [
+        {
+          "name": "synthetic_corridor",
+          "characteristics": {
+            "width": 100,
+            "height": 50,
+            "total_pixels": 5000,
+            "walls": "296",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "4704",
+            "wall_ratio": 0.0592,
+            "passable_ratio": 0.9408,
+            "avg_source_sink_distance": 80.0,
+            "complexity_score": 4.736000000000001
+          }
+        },
+        {
+          "name": "synthetic_l_shape",
+          "characteristics": {
+            "width": 60,
+            "height": 60,
+            "total_pixels": 3600,
+            "walls": "2900",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "700",
+            "wall_ratio": 0.8055555555555556,
+            "passable_ratio": 0.19444444444444445,
+            "avg_source_sink_distance": 60.0,
+            "complexity_score": 48.333333333333336
+          }
+        },
+        {
+          "name": "synthetic_multipath",
+          "characteristics": {
+            "width": 80,
+            "height": 40,
+            "total_pixels": 3200,
+            "walls": "616",
+            "sources": "1",
+            "sinks": "1",
+            "passable": "2584",
+            "wall_ratio": 0.1925,
+            "passable_ratio": 0.8075,
+            "avg_source_sink_distance": 70.0,
+            "complexity_score": 13.475
+          }
+        }
+      ]
+    },
+    "scoring_method": "systematic",
+    "experimental_features": {
+      "learning_algorithms": true,
+      "web_inspired_algorithms": true,
+      "multi_algorithm_fusion": true,
+      "advanced_valley_detection": true
+    }
+  }
+}
