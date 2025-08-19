@@ -30,11 +30,13 @@ try:
     from .waypoint_generation import create_default_tournament
     from .quick_creative_generators import create_quick_creative_tournament
     from .screenshot import screenshot_design
+    from .coordinate_transform import pixel_to_world, world_to_pixel
     from get_design import retrieveDesign, designDomToStruct
 except ImportError:
     from waypoint_generation import create_default_tournament
     from quick_creative_generators import create_quick_creative_tournament
     from screenshot import screenshot_design
+    from coordinate_transform import pixel_to_world, world_to_pixel
     from get_design import retrieveDesign, designDomToStruct
 
 
@@ -185,40 +187,83 @@ class FirelightTournament:
         self.contestants.append(contestant)
         print(f"Added handcrafted contestant with {len(waypoints)} waypoints")
     
-    def add_algorithm_contestants(self, algorithm_names: Optional[List[str]] = None):
+    def add_algorithm_contestants(self, algorithm_names: Optional[List[str]] = None, include_all: bool = False):
         """Generate waypoint lists from working algorithms."""
         print("Generating waypoint contestants...")
         
-        # Load working algorithms from Galapagos tournament results
+        # Load algorithms from Galapagos tournament results
         working_algorithms = []
         
-        # Basic algorithms
+        # Basic algorithms (always include)
         try:
             basic_tournament = create_default_tournament()
             for generator in basic_tournament.generators:
-                if algorithm_names is None or generator.name in algorithm_names:
+                if algorithm_names is None or generator.name in algorithm_names or include_all:
                     working_algorithms.append(generator)
         except Exception as e:
             print(f"Warning: Could not load basic algorithms: {e}")
         
-        # Creative algorithms (only successful ones)
+        # Creative algorithms 
         try:
             creative_tournament = create_quick_creative_tournament()
-            successful_creative = ['QuickFlowField', 'QuickGenetic', 'ImprovedCornerTurning']
-            for generator in creative_tournament.generators:
-                if generator.name in successful_creative and (algorithm_names is None or generator.name in algorithm_names):
+            if include_all:
+                # Include all creative algorithms for comprehensive mode
+                for generator in creative_tournament.generators:
                     working_algorithms.append(generator)
+            else:
+                # Only successful ones for normal mode
+                successful_creative = ['QuickFlowField', 'QuickGenetic', 'ImprovedCornerTurning']
+                for generator in creative_tournament.generators:
+                    if generator.name in successful_creative and (algorithm_names is None or generator.name in algorithm_names):
+                        working_algorithms.append(generator)
         except Exception as e:
             print(f"Warning: Could not load creative algorithms: {e}")
+            
+        # Weird algorithms (only if comprehensive mode)
+        if include_all:
+            try:
+                from weird_waypoint_generators import create_weird_tournament
+                weird_tournament = create_weird_tournament()
+                for generator in weird_tournament.generators:
+                    working_algorithms.append(generator)
+                print("Added weird algorithms for comprehensive mode")
+            except Exception as e:
+                print(f"Warning: Could not load weird algorithms: {e}")
+                
+        # Learning algorithms (only if comprehensive mode, if working)
+        if include_all:
+            try:
+                from learning_waypoint_generators import create_learning_tournament
+                learning_tournament = create_learning_tournament()
+                for generator in learning_tournament.generators:
+                    working_algorithms.append(generator)
+                print("Added learning algorithms for comprehensive mode")
+            except Exception as e:
+                print(f"Warning: Could not load learning algorithms: {e}")
+                
+        # Web-inspired algorithms (only if comprehensive mode, if working)  
+        if include_all:
+            try:
+                from web_inspired_generators import create_web_inspired_tournament
+                web_tournament = create_web_inspired_tournament()
+                for generator in web_tournament.generators:
+                    working_algorithms.append(generator)
+                print("Added web-inspired algorithms for comprehensive mode")
+            except Exception as e:
+                print(f"Warning: Could not load web-inspired algorithms: {e}")
         
         # Generate waypoints for each algorithm
         for generator in working_algorithms:
             try:
                 print(f"Generating waypoints for {generator.name}...")
-                waypoints = generator.generate_waypoints(self.screenshot)
-                contestant = FirelightContestant(generator.name, waypoints, source="algorithm")
+                pixel_waypoints = generator.generate_waypoints(self.screenshot)
+                
+                # Convert pixel coordinates to world coordinates for autotweaker
+                world_waypoints = pixel_to_world(pixel_waypoints, self.screenshot_dimensions)
+                
+                contestant = FirelightContestant(generator.name, world_waypoints, source="algorithm")
                 self.contestants.append(contestant)
-                print(f"  Generated {len(waypoints)} waypoints")
+                print(f"  Generated {len(pixel_waypoints)} waypoints (converted to world coords)")
             except Exception as e:
                 print(f"  Failed to generate waypoints for {generator.name}: {e}")
         
@@ -487,11 +532,19 @@ if __name__ == "__main__":
     parser.add_argument('--handcrafted-config', type=str, help='Path to handcrafted config file')
     parser.add_argument('--algorithms', nargs='*', help='Specific algorithms to test')
     parser.add_argument('--quick', action='store_true', help='Quick test with minimal runs')
+    parser.add_argument('--comprehensive', action='store_true', help='Full comprehensive mode: all algorithms, max workers, long timeouts')
     
     args = parser.parse_args()
     
-    # Adjust settings for quick test
-    if args.quick:
+    # Adjust settings for comprehensive mode (full everything)
+    if args.comprehensive:
+        args.runs = max(args.runs, 15)  # More runs for statistical significance
+        args.timeout = max(args.timeout, 600)  # 10 minutes per run
+        import multiprocessing
+        args.workers = min(multiprocessing.cpu_count(), 8)  # Max workers
+        args.algorithms = None  # Use all algorithms
+        print("🔬 COMPREHENSIVE MODE: Maximum settings for complete evaluation")
+    elif args.quick:
         args.runs = min(args.runs, 2)
         args.timeout = min(args.timeout, 60)
     
@@ -508,7 +561,7 @@ if __name__ == "__main__":
         tournament.add_handcrafted_contestant(args.handcrafted_config)
     
     # Add algorithm contestants
-    tournament.add_algorithm_contestants(args.algorithms)
+    tournament.add_algorithm_contestants(args.algorithms, include_all=args.comprehensive if hasattr(args, 'comprehensive') else False)
     
     if not tournament.contestants:
         print("No contestants added to tournament!")

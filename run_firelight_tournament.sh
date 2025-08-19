@@ -17,43 +17,53 @@ HANDCRAFTED_CONFIG="example/job_config.json"
 
 # Parse command line arguments
 QUICK_MODE=false
+COMPREHENSIVE_MODE=false
 ALGORITHMS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --design-id)
+        -d|--design-id)
             DESIGN_ID="$2"
             shift 2
             ;;
-        --runs)
+        -r|--runs)
             RUNS_PER_CONTESTANT="$2" 
             shift 2
             ;;
-        --timeout)
+        -t|--timeout)
             TIMEOUT_PER_RUN="$2"
             shift 2
             ;;
-        --workers)
+        -w|--workers)
             MAX_WORKERS="$2"
             shift 2
             ;;
-        --handcrafted-config)
+        -c|--handcrafted-config)
             HANDCRAFTED_CONFIG="$2"
             shift 2
             ;;
-        --algorithms)
+        -a|--algorithms)
             ALGORITHMS="$2"
             shift 2
             ;;
-        --quick)
+        -q|--quick)
             QUICK_MODE=true
             shift
             ;;
-        --full)
+        -f|--full)
             # Full production settings
             RUNS_PER_CONTESTANT="10"
             TIMEOUT_PER_RUN="300"
             MAX_WORKERS="4"
+            shift
+            ;;
+        -C|--comprehensive)
+            # Full comprehensive everything mode
+            COMPREHENSIVE_MODE=true
+            RUNS_PER_CONTESTANT="15"
+            TIMEOUT_PER_RUN="600"  # 10 minutes per run
+            MAX_WORKERS="6"
+            ALGORITHMS="all"  # Special flag for all algorithms
             shift
             ;;
         -h|--help)
@@ -62,21 +72,23 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --design-id ID        Design ID to test (default: $DESIGN_ID)"
-            echo "  --runs N              Runs per contestant (default: $RUNS_PER_CONTESTANT)"  
-            echo "  --timeout SECONDS     Timeout per run (default: $TIMEOUT_PER_RUN)"
-            echo "  --workers N           Max parallel workers (default: $MAX_WORKERS)"
-            echo "  --handcrafted-config  Path to handcrafted config (default: $HANDCRAFTED_CONFIG)"
-            echo "  --algorithms LIST     Specific algorithms to test (space-separated)"
-            echo "  --quick               Quick test mode (2 runs, 60s timeout)"
-            echo "  --full                Full production mode (10 runs, 300s timeout, 4 workers)"
-            echo "  -h, --help           Show this help"
+            echo "  -d, --design-id ID        Design ID to test (default: $DESIGN_ID)"
+            echo "  -r, --runs N              Runs per contestant (default: $RUNS_PER_CONTESTANT)"  
+            echo "  -t, --timeout SECONDS     Timeout per run (default: $TIMEOUT_PER_RUN)"
+            echo "  -w, --workers N           Max parallel workers (default: $MAX_WORKERS)"
+            echo "  -c, --handcrafted-config  Path to handcrafted config (default: $HANDCRAFTED_CONFIG)"
+            echo "  -a, --algorithms LIST     Specific algorithms to test (space-separated)"
+            echo "  -q, --quick               Quick test mode (2 runs, 60s timeout)"
+            echo "  -f, --full                Full production mode (10 runs, 300s timeout, 4 workers)"
+            echo "  -C, --comprehensive       COMPREHENSIVE mode (15 runs, 600s timeout, all algorithms)"
+            echo "  -h, --help               Show this help"
             echo ""
             echo "Examples:"
-            echo "  $0 --quick                    # Quick test"
-            echo "  $0 --full                     # Full production run"
-            echo "  $0 --design-id 12345678       # Test different design"
-            echo "  $0 --algorithms \"Null CornerTurning QuickGenetic\"  # Test specific algorithms"
+            echo "  $0 -q                         # Quick test"
+            echo "  $0 -f                         # Full production run"
+            echo "  $0 -C                         # Full comprehensive everything"
+            echo "  $0 -d 12345678                # Test different design"
+            echo "  $0 -a \"Null CornerTurning\"   # Test specific algorithms"
             exit 0
             ;;
         *)
@@ -86,11 +98,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Apply quick mode settings
+# Apply mode settings
 if [ "$QUICK_MODE" = true ]; then
     RUNS_PER_CONTESTANT="2"
     TIMEOUT_PER_RUN="60"
     echo "🚀 Quick mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout"
+elif [ "$COMPREHENSIVE_MODE" = true ]; then
+    echo "🔬 COMPREHENSIVE mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout, all algorithms"
 fi
 
 echo "=================================="

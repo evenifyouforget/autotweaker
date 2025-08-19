@@ -47,30 +47,30 @@ MODES:
     list               List available algorithms
 
 OPTIONS:
-    --max-levels N     Maximum real levels to test (default: 10)
-    --advanced         Include all creative algorithms (8+ total, slower)
-    --full             Test all 100 REAL levels with creative algorithms
-    --comprehensive    Use comprehensive analysis system (saves detailed results)
-    --multithreaded    Use multithreaded execution with timeouts (faster, recommended)
-    --fast             Quick test mode (20 levels max, fast algorithms)
-    --timeout N        Timeout per algorithm in seconds (default: 10)
-    --quiet            Reduce output verbosity
-    --help             Show this help message
+    -l, --max-levels N     Maximum real levels to test (default: 10)
+    -a, --advanced         Include all creative algorithms (8+ total, slower)
+    -f, --full             Test all 100 REAL levels with creative algorithms
+    -c, --comprehensive    Use comprehensive analysis system (saves detailed results)
+    -m, --multithreaded    Use multithreaded execution with timeouts (faster, recommended)
+    -F, --fast             Quick test mode (20 levels max, fast algorithms)
+    -t, --timeout N        Timeout per algorithm in seconds (default: 10)
+    -q, --quiet            Reduce output verbosity
+    -h, --help             Show this help message
 
 EXAMPLES:
     $0                          # Quick synthetic test (2 basic algorithms)
-    $0 synthetic --advanced     # Synthetic with all 8+ creative algorithms  
-    $0 real --max-levels 5      # Test 5 real levels (basic algorithms)
-    $0 real --advanced          # Test 10 real levels with creative algorithms
-    $0 --full                   # FULL TEST: All 100 real levels with all algorithms
-    $0 --multithreaded --advanced  # FAST: Multithreaded with all algorithms (recommended)
-    $0 --multithreaded --fast   # Quick multithreaded demo (20 levels, 10s timeout)
-    $0 list --advanced          # List all algorithms including creative ones
+    $0 synthetic -a             # Synthetic with all 8+ creative algorithms  
+    $0 real -l 5                # Test 5 real levels (basic algorithms)
+    $0 real -a                  # Test 10 real levels with creative algorithms
+    $0 -f                       # FULL TEST: All 100 real levels with all algorithms
+    $0 -m -a                    # FAST: Multithreaded with all algorithms (recommended)
+    $0 -m -F                    # Quick multithreaded demo (20 levels, 10s timeout)
+    $0 list -a                  # List all algorithms including creative ones
 
 SPECIAL MODES:
-    --full              Equivalent to: real --max-levels 100 --advanced --comprehensive
-    --comprehensive     Uses advanced analysis system with JSON result saving
-    --fast              Limits to 20 levels and uses optimized quick algorithms
+    -f, --full          Equivalent to: real -l 100 -a -c
+    -c, --comprehensive Uses advanced analysis system with JSON result saving
+    -F, --fast          Limits to 20 levels and uses optimized quick algorithms
 
 REQUIREMENTS:
     - Internet connection (for real level mode)
@@ -109,15 +109,15 @@ while [[ $# -gt 0 ]]; do
             MODE="$1"
             shift
             ;;
-        --max-levels)
+        -l|--max-levels)
             MAX_LEVELS="$2"
             shift 2
             ;;
-        --advanced)
+        -a|--advanced)
             ADVANCED_FLAG="--advanced"
             shift
             ;;
-        --full)
+        -f|--full)
             MODE="real"
             MAX_LEVELS=100
             ADVANCED_FLAG="--advanced"
@@ -125,29 +125,29 @@ while [[ $# -gt 0 ]]; do
             print_status "FULL MODE: Testing all 100 real levels with comprehensive analysis"
             shift
             ;;
-        --comprehensive)
+        -c|--comprehensive)
             COMPREHENSIVE_FLAG="--comprehensive"
             shift
             ;;
-        --multithreaded)
+        -m|--multithreaded)
             MULTITHREADED_FLAG="--multithreaded"
             shift
             ;;
-        --timeout)
+        -t|--timeout)
             TIMEOUT="$2"
             shift 2
             ;;
-        --fast)
+        -F|--fast)
             FAST_MODE=true
             MAX_LEVELS=20
             ADVANCED_FLAG="--advanced"  # Include advanced algorithms in fast mode
             shift
             ;;
-        --quiet)
+        -q|--quiet)
             QUIET_FLAG="--quiet"
             shift
             ;;
-        --help|-h)
+        -h|--help)
             show_usage
             exit 0
             ;;
@@ -228,8 +228,8 @@ fi
 
 # Build command based on mode
 if [[ "$MULTITHREADED_FLAG" == "--multithreaded" ]]; then
-    # Use multithreaded tournament system
-    CMD="python3 py_autotweaker/comprehensive_multithreaded_tournament.py"
+    # Use multithreaded tournament system (Galapagos)
+    CMD="python3 py_autotweaker/experimental_comprehensive_tournament.py"
     
     if [[ "$MODE" == "real" || "$MODE" == "mixed" ]]; then
         CMD="$CMD --real --max-levels $MAX_LEVELS"
@@ -251,8 +251,8 @@ if [[ "$MULTITHREADED_FLAG" == "--multithreaded" ]]; then
     fi
     
 elif [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
-    # Use comprehensive tournament system
-    CMD="python3 py_autotweaker/full_tournament_runner.py"
+    # Use comprehensive tournament system (Galapagos)
+    CMD="python3 py_autotweaker/experimental_comprehensive_tournament.py"
     
     if [[ "$FAST_MODE" == "true" ]]; then
         CMD="$CMD --fast"
@@ -266,8 +266,8 @@ elif [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
     
     print_status "Using comprehensive tournament system"
 else
-    # Use regular tournament system
-    CMD="python3 py_autotweaker/tournament_runner.py --mode $MODE"
+    # Use basic tournament system
+    CMD="python3 py_autotweaker/waypoint_test_runner.py --mode $MODE"
     
     if [[ -n "$MAX_LEVELS" && ("$MODE" == "real" || "$MODE" == "mixed") ]]; then
         CMD="$CMD --max-levels $MAX_LEVELS"
