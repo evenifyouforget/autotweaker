@@ -28,15 +28,19 @@ def world_to_pixel(world_coords: List[Dict[str, float]],
     """
     width, height = image_dimensions
     
+    # Calculate scales (same as screenshot.py)
+    scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
+    scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
+    
     pixel_coords = []
     for wp in world_coords:
-        # Convert position
-        pixel_x = (wp['x'] - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
-        pixel_y = (wp['y'] - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
+        # Convert position (inverse of screenshot.py: world_x = WORLD_MIN_X + (x_coords + 0.5) / scale_x)
+        # So: x_coords + 0.5 = (world_x - WORLD_MIN_X) * scale_x
+        # Therefore: x_coords = (world_x - WORLD_MIN_X) * scale_x - 0.5
+        pixel_x = (wp['x'] - WORLD_MIN_X) * scale_x - 0.5
+        pixel_y = (wp['y'] - WORLD_MIN_Y) * scale_y - 0.5
         
         # Convert radius (use minimum scale to maintain aspect ratio)
-        scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
-        scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
         radius_scale = min(scale_x, scale_y)
         pixel_radius = wp['radius'] * radius_scale
         
@@ -62,17 +66,19 @@ def pixel_to_world(pixel_coords: List[Dict[str, float]],
     """
     width, height = image_dimensions
     
+    # Calculate scales (same as screenshot.py)
+    scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
+    scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
+    
     world_coords = []
     for wp in pixel_coords:
-        # Convert position (add 0.5 for pixel center, as in screenshot.py)
-        world_x = WORLD_MIN_X + (wp['x'] + 0.5) * (WORLD_MAX_X - WORLD_MIN_X) / width
-        world_y = WORLD_MIN_Y + (wp['y'] + 0.5) * (WORLD_MAX_Y - WORLD_MIN_Y) / height
+        # Convert position (same formula as screenshot.py: world_x = WORLD_MIN_X + (x_coords + 0.5) / scale_x)
+        world_x = WORLD_MIN_X + (wp['x'] + 0.5) / scale_x
+        world_y = WORLD_MIN_Y + (wp['y'] + 0.5) / scale_y
         
         # Convert radius (use minimum scale to maintain aspect ratio)
-        scale_x = (WORLD_MAX_X - WORLD_MIN_X) / width
-        scale_y = (WORLD_MAX_Y - WORLD_MIN_Y) / height
         radius_scale = min(scale_x, scale_y)
-        world_radius = wp['radius'] * radius_scale
+        world_radius = wp['radius'] / radius_scale
         
         world_coords.append({
             'x': float(world_x),
@@ -96,8 +102,13 @@ def world_point_to_pixel(world_x: float, world_y: float,
     """
     width, height = image_dimensions
     
-    pixel_x = (world_x - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
-    pixel_y = (world_y - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
+    # Calculate scales (same as screenshot.py)
+    scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
+    scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
+    
+    # Inverse of pixel_point_to_world
+    pixel_x = (world_x - WORLD_MIN_X) * scale_x - 0.5
+    pixel_y = (world_y - WORLD_MIN_Y) * scale_y - 0.5
     
     return int(pixel_x), int(pixel_y)
 
@@ -115,8 +126,13 @@ def pixel_point_to_world(pixel_x: int, pixel_y: int,
     """
     width, height = image_dimensions
     
-    world_x = WORLD_MIN_X + (pixel_x + 0.5) * (WORLD_MAX_X - WORLD_MIN_X) / width
-    world_y = WORLD_MIN_Y + (pixel_y + 0.5) * (WORLD_MAX_Y - WORLD_MIN_Y) / height
+    # Calculate scales (same as screenshot.py)
+    scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
+    scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
+    
+    # Same formula as screenshot.py
+    world_x = WORLD_MIN_X + (pixel_x + 0.5) / scale_x
+    world_y = WORLD_MIN_Y + (pixel_y + 0.5) / scale_y
     
     return float(world_x), float(world_y)
 

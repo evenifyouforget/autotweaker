@@ -326,8 +326,17 @@ def main():
     parser.add_argument('--no-scoring-variations', action='store_true', help='Skip scoring method variations')
     parser.add_argument('--timeout', type=float, default=12.0, help='Timeout per algorithm (seconds)')
     parser.add_argument('--basic-only', action='store_true', help='Test only basic algorithms')
+    parser.add_argument('--comprehensive', action='store_true', help='Full comprehensive mode: all levels, all algorithms, max workers, JSON output')
     
     args = parser.parse_args()
+    
+    # Apply comprehensive mode settings (full everything)
+    if args.comprehensive:
+        args.real = True  # Use real levels
+        args.max_levels = 100  # All levels
+        args.timeout = 30.0  # Longer timeout
+        args.basic_only = False  # All algorithms
+        print("🔬 COMPREHENSIVE MODE: All 100 real levels, all algorithms, extended timeouts, JSON output")
     
     # Load test cases
     if args.real:
