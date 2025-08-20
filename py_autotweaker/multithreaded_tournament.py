@@ -567,7 +567,8 @@ class WaypointTournament:
                 'successful_runs': 0,
                 'failed_runs': 0,
                 'timeout_runs': 0,
-                'error_messages': []
+                'error_messages': [],
+                'failure_types': []  # Track failure categorization
             }
         
         # Process individual results
@@ -586,8 +587,12 @@ class WaypointTournament:
             else:
                 if result.timeout:
                     gen_data['timeout_runs'] += 1
+                    gen_data['failure_types'].append('timeout')
                 else:
                     gen_data['failed_runs'] += 1
+                    # Extract failure type from error data
+                    failure_type = getattr(result, 'error_type', 'unknown_error')
+                    gen_data['failure_types'].append(failure_type)
                 
                 if result.error_message:
                     gen_data['error_messages'].append(result.error_message)
@@ -608,6 +613,14 @@ class WaypointTournament:
             # Add compatibility fields for old interface
             gen_data['error_count'] = gen_data['failed_runs'] + gen_data['timeout_runs']
             gen_data['skippable_count'] = 0  # Not tracked in this implementation
+            
+            # Determine primary failure type for display
+            if gen_data['failure_types']:
+                from collections import Counter
+                failure_counts = Counter(gen_data['failure_types'])
+                gen_data['primary_failure_type'] = failure_counts.most_common(1)[0][0]
+            else:
+                gen_data['primary_failure_type'] = 'no_failures'
         
         # Store results in self.results for compatibility with old interface
         self.results = generator_results
@@ -642,7 +655,7 @@ class WaypointTournament:
         }
     
     def print_results(self, results: Dict[str, Any]):
-        """Print formatted tournament results."""
+        """Print formatted tournament results with quantile-based ranking."""
         
         print("\n" + "="*80)
         exec_type = "SINGLE-THREADED" if self.config.max_workers == 1 else "PARALLEL"
@@ -659,29 +672,113 @@ class WaypointTournament:
             print(f"Timeouts: {exec_summary['timeout_tasks']}")
         
         print(f"\nAlgorithm Performance:")
-        print("-" * 80)
+        print("-" * 95)
         
         tournament_results = results['tournament_results']
+        
+        # Calculate quantile-based scores
+        quantile_results = self._calculate_quantile_scores(tournament_results)
+        
+        # Add quantile scores to tournament results
+        for gen_name in tournament_results:
+            tournament_results[gen_name]['avg_quantile'] = quantile_results.get(gen_name, 0.0)
         
         # Sort by average score
         sorted_generators = sorted(tournament_results.items(), 
                                  key=lambda x: x[1]['avg_score'])
         
-        print(f"{'Rank':<4} {'Algorithm':<20} {'Avg Score':<10} {'Success':<8} {'Timeouts':<8} {'Avg Time':<10}")
-        print("-" * 80)
+        print(f"{'Rank':<4} {'Algorithm':<20} {'Avg Score':<10} {'Avg Quantile':<12} {'Success':<8} {'Failure Type':<13} {'Avg Time':<10}")
+        print("-" * 105)
         
         for rank, (gen_name, gen_data) in enumerate(sorted_generators, 1):
             success_rate = f"{gen_data['successful_runs']}/{exec_summary['test_case_count']}"
             avg_score = f"{gen_data['avg_score']:.2f}" if gen_data['avg_score'] != float('inf') else "FAIL"
+            avg_quantile = f"{gen_data['avg_quantile']:.3f}" if gen_data['avg_quantile'] > 0 else "N/A"
             avg_time = f"{gen_data['avg_time']:.3f}s" if gen_data['avg_time'] > 0 else "N/A"
             
-            print(f"{rank:<4} {gen_name:<20} {avg_score:<10} {success_rate:<8} "
-                  f"{gen_data['timeout_runs']:<8} {avg_time:<10}")
+            # Determine failure type
+            failure_type = "N/A"
+            if gen_data['successful_runs'] == 0:
+                failure_type = gen_data.get('primary_failure_type', 'unknown')
+            elif gen_data['timeout_runs'] > 0:
+                failure_type = f"timeout({gen_data['timeout_runs']})"
+            
+            print(f"{rank:<4} {gen_name:<20} {avg_score:<10} {avg_quantile:<12} {success_rate:<8} "
+                  f"{failure_type:<13} {avg_time:<10}")
+        
+        # Also show ranking by quantile
+        print(f"\nRanking by Quantile Performance (consistency across levels):")
+        print("-" * 95)
+        
+        # Sort by average quantile (lower is better - closer to rank 1)
+        sorted_by_quantile = sorted(tournament_results.items(), 
+                                  key=lambda x: x[1]['avg_quantile'] if x[1]['avg_quantile'] > 0 else float('inf'))
+        
+        print(f"{'Rank':<4} {'Algorithm':<20} {'Avg Quantile':<12} {'Avg Score':<10} {'Success':<8} {'Timeouts':<8}")
+        print("-" * 95)
+        
+        for rank, (gen_name, gen_data) in enumerate(sorted_by_quantile, 1):
+            if gen_data['avg_quantile'] == 0:  # Skip failed algorithms
+                continue
+            success_rate = f"{gen_data['successful_runs']}/{exec_summary['test_case_count']}"
+            avg_score = f"{gen_data['avg_score']:.2f}" if gen_data['avg_score'] != float('inf') else "FAIL"
+            avg_quantile = f"{gen_data['avg_quantile']:.3f}"
+            
+            print(f"{rank:<4} {gen_name:<20} {avg_quantile:<12} {avg_score:<10} {success_rate:<8} "
+                  f"{gen_data['timeout_runs']:<8}")
         
         if exec_summary['best_generator']:
-            print(f"\n🏆 Best performer: {exec_summary['best_generator']}")
+            print(f"\n🏆 Best performer (by raw score): {exec_summary['best_generator']}")
+        
+        # Find best by quantile
+        best_by_quantile = min([g for g in sorted_by_quantile if g[1]['avg_quantile'] > 0], 
+                             key=lambda x: x[1]['avg_quantile'], default=None)
+        if best_by_quantile:
+            print(f"🎯 Most consistent performer: {best_by_quantile[0]}")
         
         print("="*80)
+    
+    def _calculate_quantile_scores(self, tournament_results: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate quantile-based scores for each algorithm.
+        
+        For each test case, ranks algorithms and converts to quantiles.
+        Returns average quantile for each algorithm (lower = better).
+        """
+        from collections import defaultdict
+        
+        # Group scores by test case
+        test_case_scores = defaultdict(dict)  # test_case -> {generator: score}
+        
+        for gen_name, gen_data in tournament_results.items():
+            # Get individual scores for this generator
+            if 'scores' in gen_data and gen_data['successful_runs'] > 0:
+                # Assume scores are parallel with test cases
+                for i, score in enumerate(gen_data['scores']):
+                    if score != float('inf'):  # Only consider successful runs
+                        test_case_scores[i][gen_name] = score
+        
+        # Calculate quantiles for each test case
+        generator_quantiles = defaultdict(list)
+        
+        for test_case, scores in test_case_scores.items():
+            if len(scores) < 2:  # Need at least 2 scores to calculate quantiles
+                continue
+                
+            # Sort generators by score for this test case (lower score = better rank)
+            sorted_generators = sorted(scores.items(), key=lambda x: x[1])
+            
+            # Convert to quantiles (0.0 = best, 1.0 = worst)
+            num_generators = len(sorted_generators)
+            for rank, (gen_name, score) in enumerate(sorted_generators):
+                quantile = rank / (num_generators - 1) if num_generators > 1 else 0.0
+                generator_quantiles[gen_name].append(quantile)
+        
+        # Calculate average quantile for each generator
+        avg_quantiles = {}
+        for gen_name, quantiles in generator_quantiles.items():
+            avg_quantiles[gen_name] = sum(quantiles) / len(quantiles) if quantiles else 0.0
+        
+        return avg_quantiles
 
 
 def create_default_tournament(max_workers: Optional[int] = None, feature_flags: Optional[Dict[str, bool]] = None) -> 'WaypointTournament':

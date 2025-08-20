@@ -13,6 +13,7 @@ import json
 import pickle
 import time
 import traceback
+import importlib
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(__file__))
@@ -23,86 +24,14 @@ def load_task(task_file: str):
         return pickle.load(f)
 
 def create_generator(generator_name: str):
-    """Create a generator instance by name."""
-    # Import generators based on name
-    try:
-        if generator_name == "Null":
-            from waypoint_generation import NullGenerator
-            return NullGenerator()
-        elif generator_name == "CornerTurning":
-            from waypoint_generation import CornerTurningGenerator
-            return CornerTurningGenerator()
-        elif generator_name.startswith("Quick"):
-            from quick_creative_generators import (
-                QuickGeneticGenerator, QuickFlowFieldGenerator, 
-                QuickSwarmGenerator, QuickAdaptiveGenerator
-            )
-            if generator_name == "QuickGenetic":
-                return QuickGeneticGenerator()
-            elif generator_name == "QuickFlowField":
-                return QuickFlowFieldGenerator()
-            elif generator_name == "QuickSwarm":
-                return QuickSwarmGenerator()
-            elif generator_name == "QuickAdaptive":
-                return QuickAdaptiveGenerator()
-            else:
-                raise ValueError(f"Unknown quick generator: {generator_name}")
-        elif generator_name == "ImprovedCornerTurning":
-            from improved_corner_turning import ImprovedCornerTurningGenerator
-            return ImprovedCornerTurningGenerator()
-        else:
-            # Try to load from creative generators
-            try:
-                from creative_waypoint_generators import (
-                    GeneticWaypointGenerator, FlowFieldGenerator,
-                    SwarmIntelligenceGenerator, AdaptiveRandomGenerator
-                )
-                if generator_name == "Genetic":
-                    return GeneticWaypointGenerator()
-                elif generator_name == "FlowField":
-                    return FlowFieldGenerator()
-                elif generator_name == "SwarmIntelligence":
-                    return SwarmIntelligenceGenerator()
-                elif generator_name == "AdaptiveRandom":
-                    return AdaptiveRandomGenerator()
-                else:
-                    # Try weird generators
-                    from weird_waypoint_generators import (
-                        ChaosWaypointGenerator, AntiWaypointGenerator, MegaWaypointGenerator,
-                        FibonacciWaypointGenerator, MirrorWaypointGenerator, PrimeNumberWaypointGenerator,
-                        TimeBasedWaypointGenerator, CornerMagnifierGenerator, EdgeHuggerGenerator
-                    )
-                    if generator_name == "Chaos":
-                        return ChaosWaypointGenerator()
-                    elif generator_name == "Anti":
-                        return AntiWaypointGenerator()
-                    elif generator_name == "Mega":
-                        return MegaWaypointGenerator()
-                    elif generator_name == "Fibonacci":
-                        return FibonacciWaypointGenerator()
-                    elif generator_name == "Mirror":
-                        return MirrorWaypointGenerator()
-                    elif generator_name == "Prime":
-                        return PrimeNumberWaypointGenerator()
-                    elif generator_name == "TimeBased":
-                        return TimeBasedWaypointGenerator()
-                    elif generator_name == "CornerMagnifier":
-                        return CornerMagnifierGenerator()
-                    elif generator_name == "EdgeHugger":
-                        return EdgeHuggerGenerator()
-                    else:
-                        raise ValueError(f"Unknown generator: {generator_name}")
-            except ImportError:
-                raise ValueError(f"Unknown generator: {generator_name}")
-    
-    except ImportError as e:
-        raise ImportError(f"Failed to import generator {generator_name}: {e}")
-
+    """Create a generator instance by name using shared reflection."""
+    from waypoint_generation import create_generator as shared_create_generator
+    return shared_create_generator(generator_name)
 
 def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot):
     """Execute a single algorithm on a test case."""
     
-    # Create generator using shared function
+    # Create generator using reflection
     generator = create_generator(generator_name)
     
     # Execute the algorithm
@@ -117,44 +46,70 @@ def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot)
     return {
         'generator_name': generator_name,
         'test_case_name': test_case_name,
-        'score': score,
         'waypoints': waypoints,
-        'execution_time': execution_time
+        'score': score,
+        'execution_time': execution_time,
+        'success': True
     }
 
 def main():
-    """Main subprocess entry point."""
-    
-    if len(sys.argv) != 2:
-        print(json.dumps({
-            'error': 'Usage: subprocess_runner.py <task_file>'
-        }))
+    """Main entry point for subprocess execution."""
+    if len(sys.argv) != 4:
+        print("Usage: subprocess_runner.py <task_file> <result_file> <timeout>")
         sys.exit(1)
     
     task_file = sys.argv[1]
+    result_file = sys.argv[2]
+    timeout = float(sys.argv[3])
     
     try:
         # Load task
-        task_data = load_task(task_file)
-        generator_name = task_data['generator_name']
-        test_case_name = task_data['test_case_name']
-        screenshot = pickle.loads(task_data['screenshot_data'])
+        task = load_task(task_file)
+        generator_name = task['generator_name']
+        test_case_name = task['test_case_name']
+        screenshot = task['screenshot']
         
-        # Execute task
+        # Execute with timeout handling
+        start_time = time.time()
         result = execute_algorithm_task(generator_name, test_case_name, screenshot)
         
-        # Output result as JSON
-        print(json.dumps(result, default=str))
-        sys.exit(0)
-        
+        # Save result
+        with open(result_file, 'wb') as f:
+            pickle.dump(result, f)
+            
     except Exception as e:
-        # Output error as JSON
+        # Categorize the failure
+        error_type = "unknown_error"
+        if "Unknown generator" in str(e):
+            error_type = "import_error"
+        elif "timeout" in str(e).lower():
+            error_type = "timeout"  
+        elif "generate_waypoints" in str(e):
+            error_type = "generation_error"
+        elif "ImportError" in str(type(e).__name__):
+            error_type = "import_error"
+        elif "ValueError" in str(type(e).__name__):
+            error_type = "validation_error"
+        elif "TimeoutError" in str(type(e).__name__):
+            error_type = "timeout"
+        elif "NotImplementedError" in str(type(e).__name__):
+            error_type = "abstract_class"
+            
+        # Save error result
         error_result = {
+            'generator_name': task.get('generator_name', 'Unknown') if 'task' in locals() else 'Unknown',
+            'test_case_name': task.get('test_case_name', 'Unknown') if 'task' in locals() else 'Unknown',
+            'waypoints': [],
+            'score': float('inf'),
+            'execution_time': 0.0,
+            'success': False,
             'error': str(e),
+            'error_type': error_type,
             'traceback': traceback.format_exc()
         }
-        print(json.dumps(error_result))
-        sys.exit(1)
+        
+        with open(result_file, 'wb') as f:
+            pickle.dump(error_result, f)
 
 if __name__ == "__main__":
     main()

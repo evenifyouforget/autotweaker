@@ -22,8 +22,9 @@ except ImportError:
 class WaypointGenerator(ABC):
     """Base class for waypoint generation algorithms."""
     
-    def __init__(self, name: str):
-        self.name = name
+    def __init__(self, name: Optional[str] = None):
+        # Auto-derive name from class name if not provided
+        self.name = name or self.__class__.__name__.replace('Generator', '')
     
     @abstractmethod
     def generate_waypoints(self, screenshot: np.ndarray) -> List[Dict[str, float]]:
@@ -310,9 +311,74 @@ class CornerTurningGenerator(WaypointGenerator):
 from multithreaded_tournament import WaypointTournament, TournamentConfig
 
 
+def get_all_generators() -> List[WaypointGenerator]:
+    """Get all available waypoint generator classes using reflection."""
+    def get_all_subclasses(cls):
+        """Recursively get all subclasses of a class."""
+        subclasses = set(cls.__subclasses__())
+        for subclass in list(subclasses):
+            subclasses.update(get_all_subclasses(subclass))
+        return subclasses
+    
+    # Import all modules to make sure subclasses are registered
+    import importlib
+    import os
+    import sys
+    
+    # Get current directory 
+    current_dir = os.path.dirname(__file__)
+    
+    # Import all Python files in current directory to register subclasses
+    for filename in os.listdir(current_dir):
+        if filename.endswith('.py') and not filename.startswith('__'):
+            module_name = filename[:-3]
+            try:
+                if __package__:
+                    importlib.import_module(f'.{module_name}', package=__package__)
+                else:
+                    importlib.import_module(module_name)
+            except ImportError as e:
+                # Skip modules that can't be imported
+                continue
+    
+    # Get all subclasses
+    all_subclasses = get_all_subclasses(WaypointGenerator)
+    
+    # Filter out abstract classes and return concrete instances
+    concrete_instances = []
+    for cls in all_subclasses:
+        try:
+            # Try to instantiate to check if it's concrete
+            instance = cls()
+            concrete_instances.append(instance)
+        except (TypeError, NotImplementedError):
+            # Skip abstract classes or classes that can't be instantiated
+            continue
+        except Exception:
+            # Skip classes with other instantiation issues
+            continue
+    
+    return concrete_instances
+
 def get_all_generator_classes() -> List[Type[WaypointGenerator]]:
-    """Get all available waypoint generator classes."""
-    return [NullGenerator, CornerTurningGenerator]
+    """Get all available waypoint generator classes (for compatibility)."""
+    instances = get_all_generators()
+    return [instance.__class__ for instance in instances]
+
+def get_generator_by_name(name: str) -> Optional[WaypointGenerator]:
+    """Get a generator instance by name."""
+    for generator in get_all_generators():
+        if generator.name == name:
+            return generator
+    return None
+
+def create_generator(name: str) -> WaypointGenerator:
+    """Create a generator instance by name."""
+    generator = get_generator_by_name(name)
+    if generator is None:
+        available_names = [g.name for g in get_all_generators()]
+        raise ValueError(f"Unknown generator: {name}. Available: {available_names}")
+    return generator.__class__()
 
 
 def create_default_tournament(max_workers: Optional[int] = 1):
