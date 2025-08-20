@@ -222,7 +222,7 @@ def run_test_on_level_ids(level_ids: List[str], max_levels: Optional[int] = None
     
     # Print final rankings
     if verbose:
-        tournament.print_final_rankings()
+        tournament.print_results(results)
     
     return {
         "tournament_results": results,
@@ -302,7 +302,7 @@ def test_synthetic_levels(verbose: bool = True) -> Dict[str, Any]:
     
     # Print final rankings
     if verbose:
-        tournament.print_final_rankings()
+        tournament.print_results(results)
     
     return {
         "tournament_results": results,
