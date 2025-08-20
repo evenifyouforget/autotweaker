@@ -11,10 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/tournament_logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-# Default parameters
+# Default parameters  
 RUNS_PER_CONTESTANT=5
 TIMEOUT_PER_RUN=180
-MAX_WORKERS=$(nproc)
+MAX_WORKERS=$(nproc)  # Use all available cores for full mode
 DESIGN_ID=12710291
 
 # Create log directory
@@ -97,17 +97,17 @@ echo "🎯 DRY RUNS COMPLETED SUCCESSFULLY!" | tee -a "$MAIN_LOG"
 echo "All validations passed - proceeding with full tournaments" | tee -a "$MAIN_LOG"
 echo "" | tee -a "$MAIN_LOG"
 
-# Phase 3: Full Galapagos Tournament
+# Phase 3: Full Galapagos Tournament (All levels, all algorithms)
 echo "=== PHASE 3: FULL GALAPAGOS TOURNAMENT ===" | tee -a "$MAIN_LOG"
-GALAPAGOS_FULL_CMD="./run_tournament.sh --comprehensive"
+GALAPAGOS_FULL_CMD="./run_tournament.sh --full"
 
 if ! run_with_logging "$GALAPAGOS_FULL_CMD" "$GALAPAGOS_LOG" "Full Galapagos tournament"; then
     echo "⚠️ WARNING: Galapagos tournament failed, but continuing with Firelight" | tee -a "$MAIN_LOG"
 fi
 
-# Phase 4: Full Firelight Tournament
+# Phase 4: Full Firelight Tournament (All algorithms + handcrafted, generous timeouts)
 echo "=== PHASE 4: FULL FIRELIGHT TOURNAMENT ===" | tee -a "$MAIN_LOG"
-FIRELIGHT_FULL_CMD="./run_firelight_tournament.sh --design-id $DESIGN_ID --runs $RUNS_PER_CONTESTANT --timeout $TIMEOUT_PER_RUN --comprehensive"
+FIRELIGHT_FULL_CMD="./run_firelight_tournament.sh --design-id $DESIGN_ID --full"
 
 if ! run_with_logging "$FIRELIGHT_FULL_CMD" "$FIRELIGHT_LOG" "Full Firelight tournament"; then
     echo "⚠️ WARNING: Firelight tournament failed" | tee -a "$MAIN_LOG"

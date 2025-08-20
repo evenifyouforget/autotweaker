@@ -50,20 +50,14 @@ while [[ $# -gt 0 ]]; do
             QUICK_MODE=true
             shift
             ;;
-        -f|--full)
-            # Full production settings
-            RUNS_PER_CONTESTANT="10"
-            TIMEOUT_PER_RUN="300"
-            MAX_WORKERS="4"
-            shift
-            ;;
-        -C|--comprehensive)
-            # Full comprehensive everything mode
+        -f|--full|-C|--comprehensive)
+            # FULL MODE: Maximum comprehensive everything 
             COMPREHENSIVE_MODE=true
             RUNS_PER_CONTESTANT="15"
             TIMEOUT_PER_RUN="600"  # 10 minutes per run
             MAX_WORKERS=""  # Auto-detect all available cores
             ALGORITHMS="all"  # Special flag for all algorithms
+            echo "🔬 FULL MODE: Maximum comprehensive settings enabled"
             shift
             ;;
         -h|--help)
@@ -79,14 +73,13 @@ while [[ $# -gt 0 ]]; do
             echo "  -c, --handcrafted-config  Path to handcrafted config (default: $HANDCRAFTED_CONFIG)"
             echo "  -a, --algorithms LIST     Specific algorithms to test (space-separated)"
             echo "  -q, --quick               Quick test mode (2 runs, 60s timeout)"
-            echo "  -C, --comprehensive       COMPREHENSIVE mode (15 runs, 600s timeout, all algorithms, max workers)"
-            echo "  -f, --full                Full production mode (10 runs, 300s timeout)"
+            echo "  -f, --full                FULL MODE: Maximum comprehensive (15 runs, 600s timeout, all algorithms, max workers)"
+            echo "  -C, --comprehensive       Same as --full (alias for compatibility)"
             echo "  -h, --help               Show this help"
             echo ""
             echo "Examples:"
             echo "  $0 -q                         # Quick test"
-            echo "  $0 -f                         # Full production run"
-            echo "  $0 -C                         # Comprehensive mode: all algorithms, max workers"
+            echo "  $0 -f                         # FULL MODE: maximum comprehensive"
             echo "  $0 -d 12345678                # Test different design"
             echo "  $0 -a \"Null CornerTurning\"   # Test specific algorithms"
             exit 0
@@ -104,7 +97,7 @@ if [ "$QUICK_MODE" = true ]; then
     TIMEOUT_PER_RUN="60"
     echo "🚀 Quick mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout"
 elif [ "$COMPREHENSIVE_MODE" = true ]; then
-    echo "🔬 COMPREHENSIVE mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout, all algorithms"
+    echo "🔬 FULL mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout, all algorithms"
 fi
 
 echo "=================================="
