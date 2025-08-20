@@ -18,9 +18,10 @@ import pickle
 import tempfile
 import subprocess
 # Removed threading imports - now using pure subprocess-based parallelism
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional, Any, Union, Protocol, runtime_checkable
 from dataclasses import dataclass
 import multiprocessing
+import numpy as np
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(__file__))
@@ -29,6 +30,16 @@ try:
     from .improved_waypoint_scoring import improved_score_waypoint_list
 except ImportError:
     from improved_waypoint_scoring import improved_score_waypoint_list
+
+
+@runtime_checkable
+class WaypointGeneratorProtocol(Protocol):
+    """Protocol for waypoint generators to provide better type checking."""
+    name: str
+    
+    def generate_waypoints(self, screenshot: np.ndarray) -> List[Dict[str, float]]:
+        """Generate waypoints from a screenshot."""
+        ...
 
 
 @dataclass
@@ -63,7 +74,7 @@ class WaypointTournament:
     
     def __init__(self, config: Optional[TournamentConfig] = None, feature_flags: Optional[Dict[str, bool]] = None):
         self.config = config or TournamentConfig()
-        self.generators = []
+        self.generators: List[WaypointGeneratorProtocol] = []
         self.feature_flags = feature_flags or {}  # Compatibility with old interface
         self.results: Dict[str, Dict[str, Any]] = {}  # Compatibility with old interface
         
@@ -75,11 +86,11 @@ class WaypointTournament:
             print(f"Tournament initialized with {workers_desc}")
             print(f"Algorithm timeout: {self.config.timeout_per_algorithm}s")
     
-    def add_generator(self, generator):
+    def add_generator(self, generator: WaypointGeneratorProtocol) -> None:
         """Add a waypoint generator to the tournament."""
         self.generators.append(generator)
     
-    def add_generator_class(self, generator_class, *args, **kwargs):
+    def add_generator_class(self, generator_class: type[WaypointGeneratorProtocol], *args: Any, **kwargs: Any) -> None:
         """Add a generator class to the tournament (compatibility method)."""
         generator = generator_class(*args, **kwargs)
         self.add_generator(generator)
@@ -163,7 +174,7 @@ class WaypointTournament:
                 pass
     
     
-    def run_tournament(self, test_cases: List[Tuple[str, Any]], 
+    def run_tournament(self, test_cases: List[Tuple[str, Union[np.ndarray, Any]]], 
                       verbose: Optional[bool] = None) -> Dict[str, Any]:
         """
         Run the tournament with subprocess-based parallelism.
@@ -205,7 +216,11 @@ class WaypointTournament:
         total_tasks = len(tasks)
         
         # Execute tasks in parallel using subprocess batching
-        max_parallel = min(len(tasks), self.config.max_workers)
+        # Ensure max_workers is set (fallback if somehow None)
+        max_workers = self.config.max_workers
+        if max_workers is None:
+            max_workers = min(32, multiprocessing.cpu_count() + 4)
+        max_parallel = min(len(tasks), max_workers)
         
         for i in range(0, len(tasks), max_parallel):
             batch = tasks[i:i + max_parallel]
@@ -437,7 +452,7 @@ class WaypointTournament:
         print("="*80)
 
 
-def create_default_tournament(max_workers: Optional[int] = None, feature_flags: Optional[Dict[str, bool]] = None) -> WaypointTournament:
+def create_default_tournament(max_workers: Optional[int] = None, feature_flags: Optional[Dict[str, bool]] = None) -> 'WaypointTournament':
     """Create a default tournament with basic generators (compatibility function).
     
     Args:
