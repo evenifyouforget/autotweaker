@@ -16,28 +16,33 @@ import sys
 import json
 import time
 import statistics
-import threading
 import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional, Any
 import numpy as np
 
-# Add current directory to path for imports
-sys.path.append(os.path.dirname(__file__))
+# Add paths for imports (support running from any directory)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+autotweaker_root = os.path.dirname(current_dir)
+ftlib_test_dir = os.path.join(autotweaker_root, 'ftlib', 'test')
+
+sys.path.insert(0, current_dir)
+sys.path.insert(0, autotweaker_root)
+sys.path.insert(0, ftlib_test_dir)
 
 try:
-    from .waypoint_generation import create_default_tournament
-    from .quick_creative_generators import create_quick_creative_tournament
-    from .screenshot import screenshot_design
-    from .coordinate_transform import pixel_to_world, world_to_pixel
-    from get_design import retrieveDesign, designDomToStruct
-except ImportError:
     from waypoint_generation import create_default_tournament
     from quick_creative_generators import create_quick_creative_tournament
     from screenshot import screenshot_design
     from coordinate_transform import pixel_to_world, world_to_pixel
     from get_design import retrieveDesign, designDomToStruct
+except ImportError as e:
+    print(f"Import error: {e}")
+    print(f"Current directory: {current_dir}")
+    print(f"Autotweaker root: {autotweaker_root}")
+    print(f"ftlib test dir: {ftlib_test_dir}")
+    print(f"Python path: {sys.path}")
+    raise
 
 
 def normalize_screenshot_colors(screenshot: np.ndarray) -> np.ndarray:
@@ -149,19 +154,25 @@ class FirelightTournament:
                  design_id: int,
                  runs_per_contestant: int = 10,
                  timeout_per_run: int = 300,
-                 max_workers: int = 4,
-                 screenshot_dimensions: Tuple[int, int] = (400, 300)):
+                 max_workers: Optional[int] = None,
+                 screenshot_dimensions: Tuple[int, int] = (400, 290)):
         self.design_id = design_id
         self.runs_per_contestant = runs_per_contestant
         self.timeout_per_run = timeout_per_run
-        self.max_workers = max_workers
+        
+        # Auto-detect max workers if not specified
+        if max_workers is None:
+            import multiprocessing
+            self.max_workers = multiprocessing.cpu_count()
+        else:
+            self.max_workers = max_workers
+            
         self.screenshot_dimensions = screenshot_dimensions
         
         self.contestants = []
         self.design_struct = None
         self.screenshot = None
         
-        self._lock = threading.Lock()
         self._load_design()
     
     def _load_design(self):
@@ -179,6 +190,11 @@ class FirelightTournament:
     
     def add_handcrafted_contestant(self, config_path: str):
         """Add handcrafted waypoints from config file."""
+        # Make path absolute if it's relative
+        if not os.path.isabs(config_path):
+            autotweaker_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(autotweaker_root, config_path)
+        
         with open(config_path, 'r') as f:
             config = json.load(f)
         
@@ -190,6 +206,11 @@ class FirelightTournament:
     def add_algorithm_contestants(self, algorithm_names: Optional[List[str]] = None, include_all: bool = False):
         """Generate waypoint lists from working algorithms."""
         print("Generating waypoint contestants...")
+        
+        # Check if "all" was passed as a special flag
+        if algorithm_names == ['all']:
+            algorithm_names = None
+            include_all = True
         
         # Load algorithms from Galapagos tournament results
         working_algorithms = []
@@ -252,25 +273,240 @@ class FirelightTournament:
             except Exception as e:
                 print(f"Warning: Could not load web-inspired algorithms: {e}")
         
-        # Generate waypoints for each algorithm
-        for generator in working_algorithms:
+        # Generate waypoints for each algorithm (pure subprocess-based parallelism)
+        # Use 1 subprocess = 1 job pattern for true parallelism (no GIL, no threading)
+        if working_algorithms:
+            print(f"Generating waypoints using subprocess workers (1 process per algorithm)...")
+            
+            import tempfile
+            import json
+            import numpy as np
+            import subprocess
+            import sys
+            import os
+            
+            # Save screenshot to temporary file for subprocess access
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                screenshot_data = {
+                    'screenshot': self.screenshot.tolist(),
+                    'dimensions': self.screenshot_dimensions
+                }
+                json.dump(screenshot_data, f)
+                screenshot_file = f.name
+            
+            def run_waypoint_subprocess(generator_name):
+                """Run single subprocess for waypoint generation."""
+                try:
+                    # Find autotweaker root directory
+                    current_file = os.path.abspath(__file__)
+                    autotweaker_root = os.path.dirname(os.path.dirname(current_file))
+                    py_autotweaker_dir = os.path.join(autotweaker_root, 'py_autotweaker')
+                    ftlib_test_dir = os.path.join(autotweaker_root, 'ftlib', 'test')
+                    
+                    cmd = [
+                        sys.executable, '-c',
+                        f"""
+import sys
+import os
+import json
+import numpy as np
+
+# Add paths relative to autotweaker root
+autotweaker_root = r'{autotweaker_root}'
+sys.path.insert(0, autotweaker_root)
+sys.path.insert(0, r'{py_autotweaker_dir}')
+sys.path.insert(0, r'{ftlib_test_dir}')
+
+# Change to autotweaker root directory for consistent imports
+os.chdir(autotweaker_root)
+
+# Load screenshot data
+with open(r'{screenshot_file}', 'r') as f:
+    data = json.load(f)
+screenshot = np.array(data['screenshot'])
+dimensions = tuple(data['dimensions'])
+
+# Import waypoint generation
+from py_autotweaker.subprocess_runner import create_generator
+
+# Generate waypoints
+generator = create_generator('{generator_name}')
+pixel_waypoints = generator.generate_waypoints(screenshot)
+
+# Convert to world coordinates
+from py_autotweaker.coordinate_transform import pixel_to_world
+world_waypoints = pixel_to_world(pixel_waypoints, dimensions)
+
+# Output results as JSON
+import json
+result = {{
+    'success': True,
+    'name': '{generator_name}',
+    'waypoints': world_waypoints,
+    'count': len(pixel_waypoints)
+}}
+print(json.dumps(result))
+                        """
+                    ]
+                    
+                    # Run subprocess with timeout
+                    result = subprocess.run(
+                        cmd, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=60,  # 1 minute timeout per algorithm
+                        cwd=os.getcwd()
+                    )
+                    
+                    if result.returncode == 0:
+                        # Parse JSON output
+                        output_lines = result.stdout.strip().split('\n')
+                        json_line = output_lines[-1]  # Last line should be JSON
+                        return json.loads(json_line)
+                    else:
+                        return {
+                            'success': False,
+                            'name': generator_name,
+                            'error': f"Subprocess failed (exit code {result.returncode}): {result.stderr}"
+                        }
+                        
+                except subprocess.TimeoutExpired:
+                    return {
+                        'success': False,
+                        'name': generator_name,
+                        'error': f"Waypoint generation timed out after 60 seconds"
+                    }
+                except Exception as e:
+                    return {
+                        'success': False,
+                        'name': generator_name,
+                        'error': f"Unexpected error: {str(e)}"
+                    }
+            
             try:
-                print(f"Generating waypoints for {generator.name}...")
-                pixel_waypoints = generator.generate_waypoints(self.screenshot)
+                # Run subprocesses in parallel using direct subprocess management
+                max_parallel = min(len(working_algorithms), self.max_workers)
                 
-                # Convert pixel coordinates to world coordinates for autotweaker
-                world_waypoints = pixel_to_world(pixel_waypoints, self.screenshot_dimensions)
+                results = []
+                for i in range(0, len(working_algorithms), max_parallel):
+                    batch = working_algorithms[i:i + max_parallel]
+                    
+                    # Start all processes in batch
+                    processes = []
+                    for generator in batch:
+                        # Build subprocess command
+                        autotweaker_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        py_autotweaker_dir = os.path.join(autotweaker_root, 'py_autotweaker')
+                        ftlib_test_dir = os.path.join(autotweaker_root, 'ftlib', 'test')
+                        
+                        cmd = [
+                            sys.executable, '-c',
+                            f"""
+import sys
+import os
+import json
+import numpy as np
+
+# Add paths relative to autotweaker root
+autotweaker_root = r'{autotweaker_root}'
+sys.path.insert(0, autotweaker_root)
+sys.path.insert(0, r'{py_autotweaker_dir}')
+sys.path.insert(0, r'{ftlib_test_dir}')
+
+# Change to autotweaker root directory for consistent imports
+os.chdir(autotweaker_root)
+
+# Load screenshot data
+with open(r'{screenshot_file}', 'r') as f:
+    data = json.load(f)
+screenshot = np.array(data['screenshot'])
+dimensions = tuple(data['dimensions'])
+
+# Import waypoint generation
+from py_autotweaker.subprocess_runner import create_generator
+
+# Generate waypoints
+generator = create_generator('{generator.name}')
+pixel_waypoints = generator.generate_waypoints(screenshot)
+
+# Convert to world coordinates
+from py_autotweaker.coordinate_transform import pixel_to_world
+world_waypoints = pixel_to_world(pixel_waypoints, dimensions)
+
+# Output results as JSON
+import json
+result = {{
+    'success': True,
+    'name': '{generator.name}',
+    'waypoints': world_waypoints,
+    'count': len(pixel_waypoints)
+}}
+print(json.dumps(result))
+                            """
+                        ]
+                        
+                        # Start subprocess
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            cwd=autotweaker_root
+                        )
+                        processes.append((proc, generator.name))
+                    
+                    # Wait for all processes in batch to complete
+                    for proc, generator_name in processes:
+                        try:
+                            stdout, stderr = proc.communicate(timeout=60)
+                            
+                            if proc.returncode == 0:
+                                # Parse JSON output
+                                output_lines = stdout.strip().split('\n')
+                                json_line = output_lines[-1]  # Last line should be JSON
+                                result = json.loads(json_line)
+                                results.append(result)
+                            else:
+                                results.append({
+                                    'success': False,
+                                    'name': generator_name,
+                                    'error': f"Subprocess failed (exit code {proc.returncode}): {stderr}"
+                                })
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            results.append({
+                                'success': False,
+                                'name': generator_name,
+                                'error': f"Waypoint generation timed out after 60 seconds"
+                            })
+                        except Exception as e:
+                            results.append({
+                                'success': False,
+                                'name': generator_name,
+                                'error': f"Unexpected error: {str(e)}"
+                            })
                 
-                contestant = FirelightContestant(generator.name, world_waypoints, source="algorithm")
-                self.contestants.append(contestant)
-                print(f"  Generated {len(pixel_waypoints)} waypoints (converted to world coords)")
-            except Exception as e:
-                print(f"  Failed to generate waypoints for {generator.name}: {e}")
+                # Process all results
+                for result in results:
+                    if result['success']:
+                        contestant = FirelightContestant(result['name'], result['waypoints'], source="algorithm")
+                        self.contestants.append(contestant)
+                        print(f"  {result['name']}: Generated {result['count']} waypoints")
+                    else:
+                        print(f"  {result['name']}: Failed - {result['error']}")
+            
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(screenshot_file)
+                except:
+                    pass
         
-        print(f"Added {len([c for c in self.contestants if c.source == 'algorithm'])} algorithm contestants")
+        algorithm_count = len([c for c in self.contestants if c.source == 'algorithm'])
+        print(f"Added {algorithm_count} algorithm contestants")
     
-    def _run_single_autotweaker(self, contestant: FirelightContestant, run_id: int) -> Dict[str, Any]:
-        """Run single autotweaker instance with given waypoints."""
+    def _start_autotweaker_subprocess(self, contestant: FirelightContestant, run_id: int) -> Dict[str, Any]:
+        """Start single autotweaker subprocess with given waypoints."""
         run_start_time = time.time()
         
         try:
@@ -285,13 +521,16 @@ class FirelightTournament:
             with open(temp_config_path, 'w') as f:
                 json.dump(temp_config, f, indent=2)
             
-            # Build command
-            autotweaker_dir = Path(__file__).parent.parent
+            # Build command with absolute paths
+            current_file = os.path.abspath(__file__)
+            autotweaker_dir = os.path.dirname(os.path.dirname(current_file))
+            run_local_script = os.path.join(autotweaker_dir, 'run_local.sh')
+            
             cmd = [
-                './run_local.sh',
+                run_local_script,
                 'local',
                 '-d', str(self.design_id),
-                '-c', temp_config_path,
+                '-c', os.path.abspath(temp_config_path),
                 '-a',  # --do-autotweak
                 '-t', str(self.timeout_per_run),
                 '-n', '1',  # Single thread per run for consistency
@@ -299,29 +538,52 @@ class FirelightTournament:
                 '-k', '0'  # Don't upload during tournament
             ]
             
-            # Run autotweaker with timeout
-            process = subprocess.run(
+            # Start subprocess
+            process = subprocess.Popen(
                 cmd,
                 cwd=autotweaker_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_per_run + 30  # Extra buffer for process overhead
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
+            
+            return {
+                'process': process,
+                'temp_config_path': temp_config_path,
+                'start_time': run_start_time,
+                'timeout': self.timeout_per_run + 30  # Extra buffer for process overhead
+            }
+            
+        except Exception as e:
+            # Cleanup on error
+            if 'temp_config_path' in locals() and os.path.exists(temp_config_path):
+                os.unlink(temp_config_path)
+            raise e
+    
+    def _wait_for_autotweaker_result(self, proc_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Wait for autotweaker subprocess to complete and return results."""
+        process = proc_info['process']
+        temp_config_path = proc_info['temp_config_path']
+        run_start_time = proc_info['start_time']
+        timeout = proc_info['timeout']
+        
+        try:
+            # Wait for process with timeout
+            stdout, stderr = process.communicate(timeout=timeout)
             
             # Cleanup
             if os.path.exists(temp_config_path):
                 os.unlink(temp_config_path)
             
             # Parse results from output
-            output = process.stdout
-            timeout_reached = "time limit reached" in output
+            timeout_reached = "time limit reached" in stdout
             
             # Extract final score (simplified parsing)
             final_score = float('inf')
             time_to_solve = None
             
             # Look for score indicators in output
-            for line in output.split('\n'):
+            for line in stdout.split('\n'):
                 if 'Best score so far:' in line:
                     try:
                         score = float(line.split('Best score so far:')[1].strip())
@@ -340,13 +602,15 @@ class FirelightTournament:
                 'time_to_solve': time_to_solve,
                 'timeout_reached': timeout_reached,
                 'final_score': final_score,
-                'stdout': output,
-                'stderr': process.stderr,
+                'stdout': stdout,
+                'stderr': stderr,
                 'return_code': process.returncode
             }
             
         except subprocess.TimeoutExpired:
-            # Cleanup
+            # Kill process and cleanup
+            process.kill()
+            process.communicate()  # Clean up zombie process
             if os.path.exists(temp_config_path):
                 os.unlink(temp_config_path)
             
@@ -360,8 +624,13 @@ class FirelightTournament:
             }
         
         except Exception as e:
-            # Cleanup
-            if 'temp_config_path' in locals() and os.path.exists(temp_config_path):
+            # Kill process if still running and cleanup
+            try:
+                process.kill()
+                process.communicate()
+            except:
+                pass
+            if os.path.exists(temp_config_path):
                 os.unlink(temp_config_path)
             
             return {
@@ -372,6 +641,7 @@ class FirelightTournament:
                 'stderr': str(e),
                 'return_code': -2
             }
+
     
     def run_tournament(self, verbose: bool = True) -> Dict[str, Any]:
         """Run the complete Firelight tournament."""
@@ -399,20 +669,23 @@ class FirelightTournament:
             for run_id in range(self.runs_per_contestant):
                 tasks.append((contestant, run_id))
         
-        # Execute all runs with thread pool
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all tasks
-            future_to_task = {
-                executor.submit(self._run_single_autotweaker, contestant, run_id): (contestant, run_id)
-                for contestant, run_id in tasks
-            }
+        # Execute all runs with subprocess-based parallelism
+        # Use 1 subprocess = 1 job pattern for autotweaker runs (true parallelism, no GIL)
+        max_parallel = min(len(tasks), self.max_workers)
+        
+        for i in range(0, len(tasks), max_parallel):
+            batch = tasks[i:i + max_parallel]
             
-            # Process completed tasks
-            for future in as_completed(future_to_task):
-                contestant, run_id = future_to_task[future]
-                
+            # Start all processes in batch
+            processes = []
+            for contestant, run_id in batch:
+                proc_info = self._start_autotweaker_subprocess(contestant, run_id)
+                processes.append((proc_info, contestant, run_id))
+            
+            # Wait for all processes in batch to complete
+            for proc_info, contestant, run_id in processes:
                 try:
-                    result = future.result()
+                    result = self._wait_for_autotweaker_result(proc_info)
                     contestant.add_run_result(
                         result['time_to_solve'],
                         result['timeout_reached'],
@@ -541,7 +814,7 @@ if __name__ == "__main__":
         args.runs = max(args.runs, 15)  # More runs for statistical significance
         args.timeout = max(args.timeout, 600)  # 10 minutes per run
         import multiprocessing
-        args.workers = min(multiprocessing.cpu_count(), 8)  # Max workers
+        args.workers = multiprocessing.cpu_count()  # Use ALL available cores
         args.algorithms = None  # Use all algorithms
         print("🔬 COMPREHENSIVE MODE: Maximum settings for complete evaluation")
     elif args.quick:

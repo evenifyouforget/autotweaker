@@ -22,10 +22,10 @@ from typing import List, Dict, Tuple, Optional, Any
 sys.path.append(os.path.dirname(__file__))
 
 try:
-    from .multithreaded_tournament import MultithreadedTournament, TournamentConfig
+    from .multithreaded_tournament import WaypointTournament, TournamentConfig
     from .level_validation import validate_level_database, analyze_level_characteristics
 except ImportError:
-    from multithreaded_tournament import MultithreadedTournament, TournamentConfig
+    from multithreaded_tournament import WaypointTournament, TournamentConfig
     from level_validation import validate_level_database, analyze_level_characteristics
 
 
@@ -36,7 +36,7 @@ def create_experimental_comprehensive_tournament(
     include_learning: bool = True,
     include_web_inspired: bool = True,
     timeout_per_algorithm: float = 15.0,
-    max_workers: Optional[int] = None) -> MultithreadedTournament:
+    max_workers: Optional[int] = None) -> WaypointTournament:
     """
     Create the most comprehensive tournament with all experimental algorithms.
     
@@ -56,11 +56,10 @@ def create_experimental_comprehensive_tournament(
     config = TournamentConfig(
         max_workers=max_workers,
         timeout_per_algorithm=timeout_per_algorithm,
-        use_subprocess=True,
         verbose=True
     )
     
-    tournament = MultithreadedTournament(config)
+    tournament = WaypointTournament(config)
     
     algorithm_count = 0
     
@@ -326,17 +325,33 @@ def main():
     parser.add_argument('--no-scoring-variations', action='store_true', help='Skip scoring method variations')
     parser.add_argument('--timeout', type=float, default=12.0, help='Timeout per algorithm (seconds)')
     parser.add_argument('--basic-only', action='store_true', help='Test only basic algorithms')
+    parser.add_argument('--creative', action='store_true', help='Include creative algorithms')
+    parser.add_argument('--weird', action='store_true', help='Include weird algorithms')
+    parser.add_argument('--learning', action='store_true', help='Include learning algorithms')
+    parser.add_argument('--web-inspired', action='store_true', help='Include web-inspired algorithms')
+    parser.add_argument('--fast', action='store_true', help='Fast mode with reduced testing')
+    parser.add_argument('--quiet', action='store_true', help='Minimal output')
     parser.add_argument('--comprehensive', action='store_true', help='Full comprehensive mode: all levels, all algorithms, max workers, JSON output')
     
     args = parser.parse_args()
     
+    # Apply fast mode settings
+    if args.fast:
+        args.synthetic = True  # Use synthetic levels only
+        args.timeout = 5.0  # Short timeout
+        args.basic_only = True  # Basic algorithms only
+        if not args.quiet:
+            print("🚀 FAST MODE: Synthetic levels only, basic algorithms, quick timeouts")
+    
     # Apply comprehensive mode settings (full everything)
-    if args.comprehensive:
+    elif args.comprehensive:
         args.real = True  # Use real levels
-        args.max_levels = 100  # All levels
+        args.max_levels = None  # All available levels (auto-detect from TSV)
         args.timeout = 30.0  # Longer timeout
         args.basic_only = False  # All algorithms
-        print("🔬 COMPREHENSIVE MODE: All 100 real levels, all algorithms, extended timeouts, JSON output")
+        args.creative = True  # Enable creative algorithms
+        if not args.quiet:
+            print("🔬 COMPREHENSIVE MODE: All available real levels, all algorithms, extended timeouts, JSON output")
     
     # Load test cases
     if args.real:
@@ -350,10 +365,15 @@ def main():
             
             # Load real levels
             tsv_path = os.path.join(os.path.dirname(__file__), '..', 'maze_like_levels.tsv')
-            level_ids = load_maze_like_levels(tsv_path)[:args.max_levels]
+            all_level_ids = load_maze_like_levels(tsv_path)
+            if args.max_levels is None:
+                level_ids = all_level_ids  # Use all available levels
+            else:
+                level_ids = all_level_ids[:args.max_levels]
             
             test_cases = []
-            print(f"🔄 Loading {len(level_ids)} real levels...")
+            if not args.quiet:
+                print(f"🔄 Loading {len(level_ids)} real levels...")
             
             for i, level_id in enumerate(level_ids):
                 try:
@@ -362,36 +382,45 @@ def main():
                     screenshot = create_test_screenshot(design_struct, (200, 145))
                     test_cases.append((f"real_{level_id}", screenshot))
                     
-                    if (i + 1) % 5 == 0:
+                    if (i + 1) % 5 == 0 and not args.quiet:
                         print(f"   Loaded {i + 1}/{len(level_ids)} levels...")
                         
                 except Exception as e:
-                    print(f"   ⚠️  Failed to load level {level_id}: {e}")
+                    if not args.quiet:
+                        print(f"   ⚠️  Failed to load level {level_id}: {e}")
             
-            print(f"✅ Successfully loaded {len(test_cases)} real levels")
+            if not args.quiet:
+                print(f"✅ Successfully loaded {len(test_cases)} real levels")
             
         except ImportError:
             print("❌ Error: ftlib not available for real level testing")
             return 1
-    else:
+    elif args.synthetic:
         # Use synthetic test cases
         from waypoint_test_runner import create_synthetic_test_cases
         test_cases = create_synthetic_test_cases()
-        print(f"✅ Using {len(test_cases)} synthetic test cases")
+        if not args.quiet:
+            print(f"✅ Using {len(test_cases)} synthetic test cases")
+    else:
+        # Default to synthetic if neither real nor synthetic specified
+        from waypoint_test_runner import create_synthetic_test_cases
+        test_cases = create_synthetic_test_cases()
+        if not args.quiet:
+            print(f"✅ Using {len(test_cases)} synthetic test cases (default)")
     
     if not test_cases:
         print("❌ Error: No test cases available")
         return 1
     
     # Configure tournament options
-    if args.basic_only:
+    if args.basic_only and not args.quiet:
         print("🎯 Testing basic algorithms only")
         # Create basic-only tournament
         from waypoint_generation import create_default_tournament
-        from multithreaded_tournament import MultithreadedTournament, TournamentConfig
+        from multithreaded_tournament import WaypointTournament, TournamentConfig
         
         config = TournamentConfig(timeout_per_algorithm=args.timeout, verbose=True)
-        tournament = MultithreadedTournament(config)
+        tournament = WaypointTournament(config)
         
         basic_tournament = create_default_tournament()
         for generator in basic_tournament.generators:
@@ -400,13 +429,34 @@ def main():
         results = tournament.run_tournament(test_cases)
         tournament.print_results(results)
     else:
-        # Run experimental tournament
-        results = run_experimental_tournament_with_validation(
-            test_cases=test_cases,
-            validate_levels=not args.no_validation,
-            scoring_variations=not args.no_scoring_variations,
-            save_results=True
+        # Determine which algorithm categories to include
+        include_creative = args.creative or args.comprehensive
+        include_weird = args.weird or args.comprehensive  
+        include_learning = args.learning or args.comprehensive
+        include_web_inspired = getattr(args, 'web_inspired', False) or args.comprehensive
+        
+        # Create experimental tournament
+        tournament = create_experimental_comprehensive_tournament(
+            include_basic=True,  # Always include basic
+            include_creative=include_creative,
+            include_weird=include_weird,
+            include_learning=include_learning,
+            include_web_inspired=include_web_inspired,
+            timeout_per_algorithm=args.timeout
         )
+        
+        # Import here to avoid scope issues
+        from multithreaded_tournament import TournamentConfig
+        
+        # Run tournament directly
+        config = TournamentConfig()
+        config.timeout_per_algorithm = args.timeout
+        config.verbose = not args.quiet
+        tournament.config = config
+        
+        results = tournament.run_tournament(test_cases)
+        if not args.quiet:
+            tournament.print_results(results)
         
         # Analyze results
         if results:

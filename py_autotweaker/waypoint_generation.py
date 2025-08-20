@@ -306,146 +306,8 @@ class CornerTurningGenerator(WaypointGenerator):
         return False
 
 
-class WaypointTournament:
-    """Tournament system for evaluating waypoint generation algorithms."""
-    
-    def __init__(self, feature_flags: Optional[Dict[str, bool]] = None):
-        self.generators: List[WaypointGenerator] = []
-        self.feature_flags = feature_flags or {}
-        self.results: Dict[str, Dict[str, Any]] = {}
-    
-    def add_generator(self, generator: WaypointGenerator):
-        """Add a generator to the tournament."""
-        self.generators.append(generator)
-    
-    def add_generator_class(self, generator_class: Type[WaypointGenerator], *args, **kwargs):
-        """Add a generator class to the tournament."""
-        generator = generator_class(*args, **kwargs)
-        self.add_generator(generator)
-    
-    def run_tournament(self, test_cases: List[Tuple[str, np.ndarray]], 
-                      verbose: bool = True) -> Dict[str, Dict[str, Any]]:
-        """
-        Run the tournament on all test cases.
-        
-        Args:
-            test_cases: List of (test_name, screenshot) tuples
-            verbose: Whether to print progress information
-        
-        Returns:
-            Dict mapping generator names to their results
-        """
-        if verbose:
-            print(f"Running tournament with {len(self.generators)} generators on {len(test_cases)} test cases...")
-        
-        # Initialize results
-        for generator in self.generators:
-            self.results[generator.name] = {
-                'scores': [],
-                'times': [],
-                'waypoint_counts': [],
-                'skippable_count': 0,
-                'error_count': 0,
-                'total_score': 0.0,
-                'avg_time': 0.0,
-                'avg_waypoints': 0.0
-            }
-        
-        # Run each generator on each test case
-        for test_name, screenshot in test_cases:
-            if verbose:
-                print(f"\nTesting on {test_name}:")
-            
-            for generator in self.generators:
-                try:
-                    # Time the generation
-                    start_time = time.time()
-                    waypoints = generator.generate_waypoints(screenshot)
-                    generation_time = time.time() - start_time
-                    
-                    # Score the waypoints
-                    score = score_waypoint_list(screenshot, waypoints, 
-                                              penalize_skippable=True, 
-                                              feature_flags=self.feature_flags)
-                    
-                    # Check if waypoints are skippable
-                    is_skippable = not check_waypoint_non_skippability(screenshot, waypoints)
-                    
-                    # Record results
-                    results = self.results[generator.name]
-                    results['scores'].append(score)
-                    results['times'].append(generation_time)
-                    results['waypoint_counts'].append(len(waypoints))
-                    if is_skippable:
-                        results['skippable_count'] += 1
-                    
-                    if verbose:
-                        status = "SKIP" if is_skippable else "OK"
-                        print(f"  {generator.name:15} | Score: {score:8.2f} | "
-                              f"Time: {generation_time:6.3f}s | Waypoints: {len(waypoints):2d} | {status}")
-                
-                except Exception as e:
-                    self.results[generator.name]['error_count'] += 1
-                    if verbose:
-                        print(f"  {generator.name:15} | ERROR: {str(e)}")
-        
-        # Calculate aggregate statistics
-        self._calculate_final_rankings()
-        
-        return self.results
-    
-    def _calculate_final_rankings(self):
-        """Calculate final rankings and statistics for all generators."""
-        # Normalize scores across test cases for ranking
-        all_scores = []
-        for generator_name, results in self.results.items():
-            all_scores.extend(results['scores'])
-        
-        if not all_scores:
-            return
-        
-        # Calculate statistics for each generator
-        for generator_name, results in self.results.items():
-            scores = results['scores']
-            times = results['times']
-            waypoint_counts = results['waypoint_counts']
-            
-            if scores:
-                results['total_score'] = sum(scores)
-                results['avg_score'] = sum(scores) / len(scores)
-                results['median_score'] = sorted(scores)[len(scores) // 2]
-            
-            if times:
-                results['avg_time'] = sum(times) / len(times)
-                results['max_time'] = max(times)
-            
-            if waypoint_counts:
-                results['avg_waypoints'] = sum(waypoint_counts) / len(waypoint_counts)
-    
-    def print_final_rankings(self):
-        """Print final tournament rankings."""
-        if not self.results:
-            print("No results to display.")
-            return
-        
-        print("\n" + "="*80)
-        print("FINAL TOURNAMENT RANKINGS")
-        print("="*80)
-        
-        # Sort by total score (lower is better)
-        sorted_results = sorted(self.results.items(), key=lambda x: x[1]['total_score'])
-        
-        print(f"{'Rank':<4} {'Generator':<15} {'Total Score':<12} {'Avg Score':<10} "
-              f"{'Skippable':<9} {'Errors':<7} {'Avg Time':<9} {'Avg WP':<7}")
-        print("-" * 80)
-        
-        for rank, (name, results) in enumerate(sorted_results, 1):
-            print(f"{rank:<4} {name:<15} {results['total_score']:<12.2f} "
-                  f"{results.get('avg_score', 0):<10.2f} "
-                  f"{results['skippable_count']:<9} {results['error_count']:<7} "
-                  f"{results['avg_time']:<9.3f} {results.get('avg_waypoints', 0):<7.1f}")
-        
-        print("="*80)
+# Import the new high-performance tournament implementation
+from multithreaded_tournament import WaypointTournament, TournamentConfig
 
 
 def get_all_generator_classes() -> List[Type[WaypointGenerator]]:
@@ -453,20 +315,14 @@ def get_all_generator_classes() -> List[Type[WaypointGenerator]]:
     return [NullGenerator, CornerTurningGenerator]
 
 
-def create_default_tournament() -> WaypointTournament:
-    """Create a tournament with default generators and settings."""
-    tournament = WaypointTournament()
+def create_default_tournament(max_workers: Optional[int] = 1):
+    """Create a tournament with default generators and settings.
     
-    # Add all available generators
-    tournament.add_generator(NullGenerator())
-    tournament.add_generator(CornerTurningGenerator())
+    Args:
+        max_workers: Number of workers (1 = single-threaded for compatibility)
+    """
+    # Import the new tournament implementation
+    from multithreaded_tournament import create_default_tournament as create_new_tournament
     
-    # Add variation with different name to avoid confusion
-    class EnhancedCornerTurningGenerator(CornerTurningGenerator):
-        def __init__(self):
-            super().__init__(max_waypoints=10, balloon_iterations=30)
-            self.name = "EnhancedCornerTurning"
-    
-    tournament.add_generator(EnhancedCornerTurningGenerator())
-    
-    return tournament
+    # Use single-threaded by default for backward compatibility
+    return create_new_tournament(max_workers=max_workers)
