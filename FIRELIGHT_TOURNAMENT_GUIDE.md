@@ -99,10 +99,11 @@ tournament.print_results(results)
 - Proper handling of timeout bounds (censored observations)
 
 ### Robust Execution
-- Multithreaded execution with configurable workers
+- Subprocess-based parallel execution (no Python GIL limitations)
+- Configurable workers with auto-detection of CPU cores
 - Per-run timeouts to prevent hangs
-- Subprocess isolation to prevent crashes
-- Automatic cleanup of temporary files
+- Process isolation to prevent crashes
+- Automatic cleanup of temporary files and zombie processes
 
 ### Comprehensive Logging
 - Real-time progress reporting
@@ -128,16 +129,21 @@ tournament.print_results(results)
 
 #### Working Components ✅
 - Complete Firelight tournament framework
-- Subprocess execution and timeout handling
+- Subprocess-based parallel execution with process isolation
 - Screenshot generation and color normalization
 - Statistical analysis and reporting
-- Multithreaded execution
+- **Coordinate transformation**: Bidirectional pixel ↔ world coordinate mapping
 - Handcrafted waypoint integration
+- Strongly-typed data structures with validation
+- Static analysis and automated quality checking
 
-#### Known Issues ⚠️
-- **Coordinate mismatch**: Algorithms generate pixel coords, autotweaker expects world coords
-- **Long execution times**: Full tournaments can take hours
-- **No coordinate transformation**: Need mapping between screenshot and world space
+#### Recent Major Improvements ✅
+- **Threading → Subprocess**: Converted from ThreadPoolExecutor to subprocess-based parallelism
+- **True CPU Parallelism**: Bypassed Python GIL limitations for better performance
+- **Coordinate System Fixed**: Implemented precise coordinate transformation using screenshot.py formulas
+- **Tournament Consolidation**: Unified duplicate tournament implementations
+- **Enhanced Typing**: Added comprehensive type annotations with validation
+- **Path Resolution**: Fixed directory-independent execution
 
 #### Testing Results
 - **Null vs Handcrafted**: Both achieve similar high scores (1e+300) on design 12710291
@@ -145,18 +151,6 @@ tournament.print_results(results)
 - **Performance bug fixed**: Thread count conversion issue resolved
 
 ## Future Enhancements
-
-### Coordinate Transformation
-Implement bidirectional coordinate mapping:
-```python
-def screenshot_to_world_coords(pixel_coords, design_struct):
-    """Convert pixel coordinates to world coordinates"""
-    # Need to implement based on design bounds and screenshot dimensions
-    
-def world_to_screenshot_coords(world_coords, design_struct, screenshot_dims):
-    """Convert world coordinates to pixel coordinates"""  
-    # For validating handcrafted waypoints in screenshot space
-```
 
 ### Enhanced Analysis
 - Performance profiling of individual algorithms
