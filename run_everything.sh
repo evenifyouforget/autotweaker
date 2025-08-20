@@ -2,7 +2,7 @@
 
 # Complete Tournament Runner (Everything)
 # Runs dry runs first to catch errors early, then executes full tournaments
-# Logs all output to files for analysis
+# Uses existing run_tournament.sh and run_firelight_tournament.sh scripts
 
 set -euo pipefail
 
@@ -75,55 +75,18 @@ run_with_logging() {
     fi
 }
 
-# Phase 1: Galapagos Tournament Dry Run
+# Phase 1: Galapagos Tournament Dry Run (Fast synthetic test)
 echo "=== PHASE 1: GALAPAGOS DRY RUN ===" | tee -a "$MAIN_LOG"
-
-# Set environment variables for scripts
-export MAX_WORKERS
-export DESIGN_ID
-export RUNS_PER_CONTESTANT  
-export TIMEOUT_PER_RUN
-
-GALAPAGOS_DRY_CMD="python3 ./dry_run_galapagos.py"
+GALAPAGOS_DRY_CMD="./run_tournament.sh synthetic --fast --quiet"
 
 if ! run_with_logging "$GALAPAGOS_DRY_CMD" "$GALAPAGOS_LOG" "Galapagos tournament dry run"; then
     echo "🛑 STOPPING: Galapagos dry run failed" | tee -a "$MAIN_LOG"
     exit 1
 fi
 
-# Phase 2: Firelight Tournament Dry Run  
+# Phase 2: Firelight Tournament Dry Run
 echo "=== PHASE 2: FIRELIGHT DRY RUN ===" | tee -a "$MAIN_LOG"
-FIRELIGHT_DRY_CMD="python3.13 -c \"
-import sys
-sys.path.append('py_autotweaker')
-from firelight_tournament import FirelightTournament
-
-# Create Firelight tournament with dry run
-tournament = FirelightTournament(
-    design_id=$DESIGN_ID,
-    runs_per_contestant=1,  # Minimal for dry run
-    timeout_per_run=$TIMEOUT_PER_RUN,
-    max_workers=$MAX_WORKERS,
-    dry_run=True
-)
-
-# Add basic contestants for validation
-tournament.add_algorithm_contestants(['Null', 'CornerTurning'])
-
-result = tournament.run_tournament()
-
-if not all([
-    result.get('imports_valid', False),
-    result.get('design_valid', False),
-    result.get('contestants_valid', False),
-    result.get('autotweaker_valid', False),
-    result.get('file_permissions_valid', False)
-]):
-    print('❌ Firelight dry run validation failed')
-    exit(1)
-else:
-    print('✅ Firelight dry run validation passed')
-\""
+FIRELIGHT_DRY_CMD="./run_firelight_tournament.sh --quick --design-id $DESIGN_ID"
 
 if ! run_with_logging "$FIRELIGHT_DRY_CMD" "$FIRELIGHT_LOG" "Firelight tournament dry run"; then
     echo "🛑 STOPPING: Firelight dry run failed" | tee -a "$MAIN_LOG"
@@ -136,32 +99,7 @@ echo "" | tee -a "$MAIN_LOG"
 
 # Phase 3: Full Galapagos Tournament
 echo "=== PHASE 3: FULL GALAPAGOS TOURNAMENT ===" | tee -a "$MAIN_LOG"
-GALAPAGOS_FULL_CMD="python3.13 -c \"
-import sys
-sys.path.append('py_autotweaker')
-from experimental_comprehensive_tournament import create_experimental_comprehensive_tournament
-from waypoint_test_runner import create_synthetic_test_cases
-
-# Create comprehensive tournament (full execution)
-tournament = create_experimental_comprehensive_tournament(
-    include_basic=True,
-    include_creative=True,
-    include_weird=True,
-    include_learning=True,
-    include_web_inspired=True,
-    timeout_per_algorithm=15.0,
-    max_workers=$MAX_WORKERS,
-    dry_run=False
-)
-
-test_cases = create_synthetic_test_cases()
-results = tournament.run_tournament(test_cases)
-tournament.print_results(results)
-
-print('')
-print('🏆 GALAPAGOS TOURNAMENT COMPLETED')
-print('Results logged to: $GALAPAGOS_LOG')
-\""
+GALAPAGOS_FULL_CMD="./run_tournament.sh --comprehensive"
 
 if ! run_with_logging "$GALAPAGOS_FULL_CMD" "$GALAPAGOS_LOG" "Full Galapagos tournament"; then
     echo "⚠️ WARNING: Galapagos tournament failed, but continuing with Firelight" | tee -a "$MAIN_LOG"
@@ -169,36 +107,7 @@ fi
 
 # Phase 4: Full Firelight Tournament
 echo "=== PHASE 4: FULL FIRELIGHT TOURNAMENT ===" | tee -a "$MAIN_LOG"
-FIRELIGHT_FULL_CMD="python3.13 -c \"
-import sys
-sys.path.append('py_autotweaker')
-from firelight_tournament import FirelightTournament
-
-# Create full Firelight tournament
-tournament = FirelightTournament(
-    design_id=$DESIGN_ID,
-    runs_per_contestant=$RUNS_PER_CONTESTANT,
-    timeout_per_run=$TIMEOUT_PER_RUN,
-    max_workers=$MAX_WORKERS,
-    dry_run=False
-)
-
-# Add contestants
-tournament.add_algorithm_contestants(['Null', 'CornerTurning', 'QuickGenetic'])
-
-try:
-    tournament.add_handcrafted_contestant('example/job_config.json')
-    print('✅ Added handcrafted baseline')
-except Exception as e:
-    print(f'⚠️ Could not add handcrafted baseline: {e}')
-
-results = tournament.run_tournament()
-tournament.print_results(results)
-
-print('')
-print('🏆 FIRELIGHT TOURNAMENT COMPLETED')
-print('Results logged to: $FIRELIGHT_LOG')
-\""
+FIRELIGHT_FULL_CMD="./run_firelight_tournament.sh --design-id $DESIGN_ID --runs $RUNS_PER_CONTESTANT --timeout $TIMEOUT_PER_RUN --comprehensive"
 
 if ! run_with_logging "$FIRELIGHT_FULL_CMD" "$FIRELIGHT_LOG" "Full Firelight tournament"; then
     echo "⚠️ WARNING: Firelight tournament failed" | tee -a "$MAIN_LOG"
