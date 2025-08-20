@@ -18,8 +18,8 @@ import pickle
 import tempfile
 import subprocess
 # Removed threading imports - now using pure subprocess-based parallelism
-from typing import List, Dict, Tuple, Optional, Any, Union, Protocol, runtime_checkable
-from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional, Any, Union, Protocol, runtime_checkable, NamedTuple
+from dataclasses import dataclass, field
 import multiprocessing
 import numpy as np
 
@@ -30,6 +30,44 @@ try:
     from .improved_waypoint_scoring import improved_score_waypoint_list
 except ImportError:
     from improved_waypoint_scoring import improved_score_waypoint_list
+
+
+@dataclass(frozen=True)
+class Waypoint:
+    """Structured waypoint data with proper typing."""
+    x: float
+    y: float
+    radius: float = 50.0
+    
+    def to_dict(self) -> Dict[str, float]:
+        """Convert to dictionary format for backward compatibility."""
+        return {'x': self.x, 'y': self.y, 'radius': self.radius}
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, float]) -> 'Waypoint':
+        """Create waypoint from dictionary."""
+        return cls(
+            x=data['x'], 
+            y=data['y'], 
+            radius=data.get('radius', 50.0)
+        )
+
+
+class TestCaseInfo(NamedTuple):
+    """Structured test case information."""
+    name: str
+    screenshot: np.ndarray
+    difficulty: Optional[str] = None
+    
+
+class ExecutionStats(NamedTuple):
+    """Execution statistics for tournament runs."""
+    total_time_seconds: float
+    total_tasks: int
+    successful_tasks: int
+    failed_tasks: int
+    timeout_tasks: int
+    tasks_per_second: float
 
 
 @runtime_checkable
@@ -49,13 +87,35 @@ class TaskResult:
     test_case_name: str
     success: bool
     score: Optional[float] = None
-    waypoints: Optional[List[Dict[str, float]]] = None
+    waypoints: Optional[List[Dict[str, float]]] = field(default=None)
     execution_time: Optional[float] = None
     error_message: Optional[str] = None
     timeout: bool = False
+    
+    def __post_init__(self) -> None:
+        """Validate data consistency after initialization."""
+        # Ensure success state is consistent with other fields
+        if self.success and (self.score is None or self.waypoints is None):
+            raise ValueError("Successful results must have score and waypoints")
+        
+        if self.timeout and self.success:
+            raise ValueError("Cannot be both timeout and successful")
+        
+        if self.execution_time is not None and self.execution_time < 0:
+            raise ValueError("Execution time cannot be negative")
+        
+        if self.score is not None and self.score < 0:
+            raise ValueError("Score cannot be negative")
+    
+    @property 
+    def waypoints_typed(self) -> List[Waypoint]:
+        """Get waypoints as strongly-typed Waypoint objects."""
+        if self.waypoints is None:
+            return []
+        return [Waypoint.from_dict(wp) for wp in self.waypoints]
 
 
-@dataclass
+@dataclass  
 class TournamentConfig:
     """Configuration for subprocess tournament execution."""
     max_workers: Optional[int] = None  # None = auto-detect CPU count
@@ -63,6 +123,24 @@ class TournamentConfig:
     verbose: bool = True
     save_individual_results: bool = False  # Save each result immediately
     early_termination_threshold: float = 0.8  # Stop if 80% of algorithms fail consistently
+    
+    def __post_init__(self) -> None:
+        """Validate configuration parameters."""
+        if self.max_workers is not None and self.max_workers <= 0:
+            raise ValueError("max_workers must be positive")
+        
+        if self.timeout_per_algorithm <= 0:
+            raise ValueError("timeout_per_algorithm must be positive")
+        
+        if not 0 <= self.early_termination_threshold <= 1:
+            raise ValueError("early_termination_threshold must be between 0 and 1")
+    
+    @property
+    def effective_max_workers(self) -> int:
+        """Get the effective number of workers (resolving None to CPU count)."""
+        if self.max_workers is None:
+            return min(32, multiprocessing.cpu_count() + 4)
+        return self.max_workers
 
 
 class WaypointTournament:

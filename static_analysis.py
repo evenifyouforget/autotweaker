@@ -77,15 +77,25 @@ def check_type_annotations(file_path: str) -> Tuple[bool, str]:
         return False, f"❌ Type Annotation Check Error: {e}"
 
 
-def run_static_analysis(directory: str) -> None:
-    """Run static analysis on all Python files in directory."""
+def run_static_analysis(path: str) -> None:
+    """Run static analysis on Python file(s) in path."""
     print("🔍 STATIC ANALYSIS REPORT")
     print("=" * 50)
     
-    py_files = list(Path(directory).glob("**/*.py"))
+    path_obj = Path(path)
+    
+    if path_obj.is_file() and path_obj.suffix == '.py':
+        # Single file
+        py_files = [path_obj]
+    elif path_obj.is_dir():
+        # Directory - find all Python files
+        py_files = list(path_obj.glob("**/*.py"))
+    else:
+        print(f"Invalid path: {path}")
+        return
     
     if not py_files:
-        print(f"No Python files found in {directory}")
+        print(f"No Python files found at {path}")
         return
     
     print(f"Analyzing {len(py_files)} Python files...\n")
@@ -94,8 +104,15 @@ def run_static_analysis(directory: str) -> None:
     syntax_ok = 0
     imports_ok = 0
     
+    base_path = path_obj if path_obj.is_dir() else path_obj.parent
+    
     for file_path in py_files:
-        print(f"📁 {file_path.relative_to(Path(directory))}")
+        try:
+            relative_path = file_path.relative_to(base_path)
+        except ValueError:
+            # File not relative to base path, use name only
+            relative_path = file_path.name
+        print(f"📁 {relative_path}")
         
         # Syntax check
         syntax_success, syntax_msg = check_syntax(str(file_path))
