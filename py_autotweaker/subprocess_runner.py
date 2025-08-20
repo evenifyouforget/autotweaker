@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.13
 """
 Subprocess runner for isolated algorithm execution.
 
@@ -22,35 +22,34 @@ def load_task(task_file: str):
     with open(task_file, 'rb') as f:
         return pickle.load(f)
 
-def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot):
-    """Execute a single algorithm on a test case."""
-    
+def create_generator(generator_name: str):
+    """Create a generator instance by name."""
     # Import generators based on name
     try:
         if generator_name == "Null":
             from waypoint_generation import NullGenerator
-            generator = NullGenerator()
+            return NullGenerator()
         elif generator_name == "CornerTurning":
             from waypoint_generation import CornerTurningGenerator
-            generator = CornerTurningGenerator()
+            return CornerTurningGenerator()
         elif generator_name.startswith("Quick"):
             from quick_creative_generators import (
                 QuickGeneticGenerator, QuickFlowFieldGenerator, 
                 QuickSwarmGenerator, QuickAdaptiveGenerator
             )
             if generator_name == "QuickGenetic":
-                generator = QuickGeneticGenerator()
+                return QuickGeneticGenerator()
             elif generator_name == "QuickFlowField":
-                generator = QuickFlowFieldGenerator()
+                return QuickFlowFieldGenerator()
             elif generator_name == "QuickSwarm":
-                generator = QuickSwarmGenerator()
+                return QuickSwarmGenerator()
             elif generator_name == "QuickAdaptive":
-                generator = QuickAdaptiveGenerator()
+                return QuickAdaptiveGenerator()
             else:
                 raise ValueError(f"Unknown quick generator: {generator_name}")
         elif generator_name == "ImprovedCornerTurning":
             from improved_corner_turning import ImprovedCornerTurningGenerator
-            generator = ImprovedCornerTurningGenerator()
+            return ImprovedCornerTurningGenerator()
         else:
             # Try to load from creative generators
             try:
@@ -59,13 +58,13 @@ def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot)
                     SwarmIntelligenceGenerator, AdaptiveRandomGenerator
                 )
                 if generator_name == "Genetic":
-                    generator = GeneticWaypointGenerator()
+                    return GeneticWaypointGenerator()
                 elif generator_name == "FlowField":
-                    generator = FlowFieldGenerator()
+                    return FlowFieldGenerator()
                 elif generator_name == "SwarmIntelligence":
-                    generator = SwarmIntelligenceGenerator()
+                    return SwarmIntelligenceGenerator()
                 elif generator_name == "AdaptiveRandom":
-                    generator = AdaptiveRandomGenerator()
+                    return AdaptiveRandomGenerator()
                 else:
                     # Try weird generators
                     from weird_waypoint_generators import (
@@ -74,23 +73,23 @@ def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot)
                         TimeBasedWaypointGenerator, CornerMagnifierGenerator, EdgeHuggerGenerator
                     )
                     if generator_name == "Chaos":
-                        generator = ChaosWaypointGenerator()
+                        return ChaosWaypointGenerator()
                     elif generator_name == "Anti":
-                        generator = AntiWaypointGenerator()
+                        return AntiWaypointGenerator()
                     elif generator_name == "Mega":
-                        generator = MegaWaypointGenerator()
+                        return MegaWaypointGenerator()
                     elif generator_name == "Fibonacci":
-                        generator = FibonacciWaypointGenerator()
+                        return FibonacciWaypointGenerator()
                     elif generator_name == "Mirror":
-                        generator = MirrorWaypointGenerator()
+                        return MirrorWaypointGenerator()
                     elif generator_name == "Prime":
-                        generator = PrimeNumberWaypointGenerator()
+                        return PrimeNumberWaypointGenerator()
                     elif generator_name == "TimeBased":
-                        generator = TimeBasedWaypointGenerator()
+                        return TimeBasedWaypointGenerator()
                     elif generator_name == "CornerMagnifier":
-                        generator = CornerMagnifierGenerator()
+                        return CornerMagnifierGenerator()
                     elif generator_name == "EdgeHugger":
-                        generator = EdgeHuggerGenerator()
+                        return EdgeHuggerGenerator()
                     else:
                         raise ValueError(f"Unknown generator: {generator_name}")
             except ImportError:
@@ -98,6 +97,13 @@ def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot)
     
     except ImportError as e:
         raise ImportError(f"Failed to import generator {generator_name}: {e}")
+
+
+def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot):
+    """Execute a single algorithm on a test case."""
+    
+    # Create generator using shared function
+    generator = create_generator(generator_name)
     
     # Execute the algorithm
     start_time = time.time()

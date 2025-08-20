@@ -36,7 +36,8 @@ def create_experimental_comprehensive_tournament(
     include_learning: bool = True,
     include_web_inspired: bool = True,
     timeout_per_algorithm: float = 15.0,
-    max_workers: Optional[int] = None) -> WaypointTournament:
+    max_workers: Optional[int] = None,
+    dry_run: bool = False) -> WaypointTournament:
     """
     Create the most comprehensive tournament with all experimental algorithms.
     
@@ -48,6 +49,7 @@ def create_experimental_comprehensive_tournament(
         include_web_inspired: Include web-research inspired algorithms
         timeout_per_algorithm: Timeout per algorithm run
         max_workers: Number of worker threads
+        dry_run: Validate configuration without running algorithms
         
     Returns:
         Configured comprehensive tournament
@@ -56,7 +58,8 @@ def create_experimental_comprehensive_tournament(
     config = TournamentConfig(
         max_workers=max_workers,
         timeout_per_algorithm=timeout_per_algorithm,
-        verbose=True
+        verbose=True,
+        dry_run=dry_run
     )
     
     tournament = WaypointTournament(config)

@@ -36,6 +36,8 @@ try:
     from screenshot import screenshot_design
     from coordinate_transform import pixel_to_world, world_to_pixel
     from get_design import retrieveDesign, designDomToStruct
+    from improved_waypoint_scoring import improved_score_waypoint_list
+    from waypoint_scoring import score_waypoint_list
 except ImportError as e:
     print(f"Import error: {e}")
     print(f"Current directory: {current_dir}")
@@ -155,10 +157,12 @@ class FirelightTournament:
                  runs_per_contestant: int = 10,
                  timeout_per_run: int = 300,
                  max_workers: Optional[int] = None,
-                 screenshot_dimensions: Tuple[int, int] = (400, 290)):
+                 screenshot_dimensions: Tuple[int, int] = (400, 290),
+                 dry_run: bool = False):
         self.design_id = design_id
         self.runs_per_contestant = runs_per_contestant
         self.timeout_per_run = timeout_per_run
+        self.dry_run = dry_run
         
         # Auto-detect max workers if not specified
         if max_workers is None:
@@ -642,11 +646,192 @@ print(json.dumps(result))
                 'return_code': -2
             }
 
+    def _create_config_for_contestant(self, contestant: FirelightContestant) -> Dict[str, Any]:
+        """Create autotweaker config for a contestant."""
+        return {
+            "waypoints": contestant.waypoints,
+            "tickMinimum": 600,
+            "tickMaximum": 4000
+        }
+
+    def _dry_run_validation(self, verbose: bool = True) -> Dict[str, Any]:
+        """Perform dry run validation without executing autotweaker runs.
+        
+        Validates:
+        - Design loading and screenshot generation 
+        - Contestant waypoint generation
+        - Configuration file creation
+        - Autotweaker executable availability
+        - File system permissions
+        
+        Returns:
+            Validation results with detailed error information
+        """
+        print("🔍 DRY RUN: Validating Firelight tournament configuration...")
+        
+        validation_results = {
+            'design_valid': True,
+            'contestants_valid': True,
+            'autotweaker_valid': True,
+            'file_permissions_valid': True,
+            'imports_valid': True,
+            'errors': [],
+            'warnings': [],
+            'summary': {}
+        }
+        
+        # 0. Validate critical imports first
+        try:
+            # Test ftlib imports
+            import sys
+            autotweaker_root = os.path.dirname(os.path.dirname(__file__))
+            ftlib_test_dir = os.path.join(autotweaker_root, 'ftlib', 'test')
+            
+            if ftlib_test_dir not in sys.path:
+                sys.path.insert(0, ftlib_test_dir)
+            
+            from get_design import retrieveDesign, designDomToStruct
+            from py_autotweaker.waypoint_generation import create_default_tournament
+            from py_autotweaker.screenshot import screenshot_design
+            
+            print(f"   ✅ Imports: Critical modules accessible")
+            validation_results['summary']['imports'] = 'success'
+            
+        except Exception as e:
+            validation_results['imports_valid'] = False
+            error_msg = f"Import validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ Imports: {error_msg}")
+            # Early exit if imports fail since other validations depend on them
+            return validation_results
+        
+        # 1. Validate design and screenshot
+        try:
+            if self.design_struct is None or self.screenshot is None:
+                raise ValueError("Design struct or screenshot not loaded")
+            
+            validation_results['summary']['design_id'] = self.design_id
+            validation_results['summary']['screenshot_shape'] = self.screenshot.shape
+            print(f"   ✅ Design: {self.design_id} loaded with screenshot {self.screenshot.shape}")
+            
+        except Exception as e:
+            validation_results['design_valid'] = False
+            validation_results['errors'].append(f"Design validation failed: {e}")
+            print(f"   ❌ Design: {e}")
+        
+        # 2. Validate contestants and waypoints
+        contestant_status = []
+        for contestant in self.contestants:
+            try:
+                # Validate contestant has waypoints attribute (empty list is valid)
+                if not hasattr(contestant, 'waypoints'):
+                    raise ValueError(f"Contestant {contestant.name} missing waypoints attribute")
+                
+                # Validate waypoint format
+                for i, wp in enumerate(contestant.waypoints):
+                    if not isinstance(wp, dict) or 'x' not in wp or 'y' not in wp:
+                        raise ValueError(f"Waypoint {i} invalid format")
+                
+                # Test config file creation
+                config_data = self._create_config_for_contestant(contestant)
+                if not config_data or 'waypoints' not in config_data:
+                    raise ValueError(f"Config creation failed for {contestant.name}")
+                
+                contestant_status.append({
+                    'name': contestant.name,
+                    'waypoint_count': len(contestant.waypoints),
+                    'source': contestant.source,
+                    'status': 'valid'
+                })
+                print(f"   ✅ Contestant: {contestant.name} ({len(contestant.waypoints)} waypoints)")
+                
+            except Exception as e:
+                validation_results['contestants_valid'] = False
+                error_msg = f"Contestant {contestant.name} failed: {e}"
+                validation_results['errors'].append(error_msg)
+                contestant_status.append({
+                    'name': contestant.name,
+                    'status': 'failed',
+                    'error': str(e)
+                })
+                print(f"   ❌ Contestant: {error_msg}")
+        
+        validation_results['summary']['contestants'] = contestant_status
+        
+        # 3. Validate autotweaker executable
+        try:
+            autotweaker_module = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'py_autotweaker')
+            if not os.path.exists(autotweaker_module):
+                raise FileNotFoundError(f"Autotweaker module not found: {autotweaker_module}")
+            
+            # Test basic autotweaker availability using module format
+            result = subprocess.run([
+                sys.executable, '-m', 'py_autotweaker', '--help'
+            ], capture_output=True, text=True, timeout=10, cwd=os.path.dirname(os.path.dirname(__file__)))
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"Autotweaker module not functional: {result.stderr}")
+            
+            print(f"   ✅ Autotweaker: python -m py_autotweaker")
+            validation_results['summary']['autotweaker_module'] = autotweaker_module
+            
+        except Exception as e:
+            validation_results['autotweaker_valid'] = False
+            error_msg = f"Autotweaker validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ Autotweaker: {error_msg}")
+        
+        # 4. Validate file permissions (for temp files)
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+', delete=True, suffix='.json') as f:
+                test_config = {'test': 'data', 'waypoints': [{'x': 0, 'y': 0}]}
+                json.dump(test_config, f)
+                f.flush()
+                # Try to read it back
+                f.seek(0)
+                loaded_data = json.load(f)
+                assert loaded_data == test_config
+            
+            print(f"   ✅ File permissions: Temporary file creation/deletion working")
+            
+        except Exception as e:
+            validation_results['file_permissions_valid'] = False
+            error_msg = f"File permissions validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ File permissions: {error_msg}")
+        
+        # Overall validation summary
+        all_valid = all([
+            validation_results['imports_valid'],
+            validation_results['design_valid'],
+            validation_results['contestants_valid'],
+            validation_results['autotweaker_valid'],
+            validation_results['file_permissions_valid']
+        ])
+        
+        print(f"\n🎯 DRY RUN SUMMARY:")
+        if all_valid:
+            print(f"   ✅ All validations passed - tournament ready to run")
+            print(f"   📊 {len(self.contestants)} contestants × {self.runs_per_contestant} runs = {len(self.contestants) * self.runs_per_contestant} total runs")
+            estimated_time = (len(self.contestants) * self.runs_per_contestant * self.timeout_per_run) / self.max_workers
+            print(f"   ⏱️  Estimated max execution time: {estimated_time:.1f} seconds")
+        else:
+            error_count = len(validation_results['errors'])
+            print(f"   ❌ {error_count} validation errors found - fix before running")
+            for error in validation_results['errors']:
+                print(f"      • {error}")
+        
+        return validation_results
     
     def run_tournament(self, verbose: bool = True) -> Dict[str, Any]:
         """Run the complete Firelight tournament."""
         if not self.contestants:
             raise ValueError("No contestants added to tournament")
+        
+        # Handle dry run mode
+        if self.dry_run:
+            return self._dry_run_validation(verbose)
         
         start_time = time.time()
         total_runs = len(self.contestants) * self.runs_per_contestant
@@ -711,6 +896,32 @@ print(json.dumps(result))
         for contestant in self.contestants:
             contestant.calculate_statistics()
         
+        # Calculate synthetic scores using Galapagos scoring methods
+        print("\nCalculating synthetic scores for comparison...")
+        for contestant in self.contestants:
+            try:
+                # Basic Galapagos score (minimal features)
+                basic_score = score_waypoint_list(self.screenshot, contestant.waypoints, 
+                                                penalize_skippable=True, feature_flags=None)
+                
+                # Improved Galapagos score (all features)
+                improved_score = improved_score_waypoint_list(self.screenshot, contestant.waypoints)
+                
+                # Store in contestant for later use
+                contestant.synthetic_scores = {
+                    'basic_score': basic_score,
+                    'improved_score': improved_score
+                }
+                
+                print(f"  {contestant.name}: Basic={basic_score:.1f}, Improved={improved_score:.1f}")
+                
+            except Exception as e:
+                print(f"  {contestant.name}: Synthetic scoring failed - {e}")
+                contestant.synthetic_scores = {
+                    'basic_score': float('inf'),
+                    'improved_score': float('inf')
+                }
+        
         # Prepare results
         results = {
             'tournament_info': {
@@ -726,7 +937,7 @@ print(json.dumps(result))
         return results
     
     def print_results(self, results: Dict[str, Any]):
-        """Print formatted tournament results."""
+        """Print formatted tournament results with dual rankings and TSV output."""
         print("\n" + "=" * 80)
         print("FIRELIGHT TOURNAMENT RESULTS")
         print("=" * 80)
@@ -737,56 +948,147 @@ print(json.dumps(result))
         print(f"Total runs: {info['total_runs']} ({info['runs_per_contestant']} per contestant)")
         print()
         
-        # Sort contestants by performance (success rate, then average solve time)
-        contestants = sorted(results['contestants'], 
-                           key=lambda c: (-c.statistics['success_rate'], 
-                                        c.statistics['avg_solve_time'] or float('inf')))
+        contestants = results['contestants']
         
-        print("Contestant Performance:")
-        print("-" * 80)
-        print(f"{'Rank':<4} {'Name':<20} {'Source':<12} {'Success':<8} {'Avg Time':<10} {'Best Score':<12}")
+        # Generate TSV output
+        print("TSV DATA (copy-paste friendly):")
         print("-" * 80)
         
-        for i, contestant in enumerate(contestants, 1):
+        # TSV Headers
+        tsv_headers = [
+            "name", "source", "waypoints", "success_rate", "successes", "total_runs",
+            "avg_solve_time", "median_solve_time", "min_solve_time", "max_solve_time", "solve_time_stdev",
+            "best_final_score", "avg_final_score", "timeouts", "failures",
+            "basic_synthetic_score", "improved_synthetic_score"
+        ]
+        print("\t".join(tsv_headers))
+        
+        # TSV Data
+        for contestant in contestants:
             stats = contestant.statistics
+            synthetic = getattr(contestant, 'synthetic_scores', {'basic_score': 'N/A', 'improved_score': 'N/A'})
             
-            success_str = f"{stats['successes']}/{stats['total_runs']}"
-            success_pct = f"({stats['success_rate']*100:.1f}%)"
-            
-            avg_time_str = f"{stats['avg_solve_time']:.1f}s" if stats['avg_solve_time'] else "N/A"
-            if stats['avg_solve_time'] and stats['solve_time_stdev'] > 0:
-                avg_time_str += f"±{stats['solve_time_stdev']:.1f}"
-            
-            best_score_str = f"{stats['best_final_score']:.1f}" if stats['best_final_score'] != float('inf') else "∞"
-            
-            print(f"{i:<4} {contestant.name:<20} {contestant.source:<12} "
-                  f"{success_str:<8} {avg_time_str:<10} {best_score_str:<12}")
+            tsv_values = [
+                str(contestant.name),
+                str(contestant.source),
+                str(len(contestant.waypoints)),
+                f"{stats['success_rate']:.4f}",
+                str(stats['successes']),
+                str(stats['total_runs']),
+                f"{stats['avg_solve_time']:.2f}" if stats['avg_solve_time'] is not None else "N/A",
+                f"{stats['median_solve_time']:.2f}" if stats['median_solve_time'] is not None else "N/A",
+                f"{stats['min_solve_time']:.2f}" if stats['min_solve_time'] is not None else "N/A",
+                f"{stats['max_solve_time']:.2f}" if stats['max_solve_time'] is not None else "N/A",
+                f"{stats['solve_time_stdev']:.2f}" if stats['solve_time_stdev'] is not None else "N/A",
+                f"{stats['best_final_score']:.2f}" if stats['best_final_score'] != float('inf') else "inf",
+                f"{stats['avg_final_score']:.2f}" if stats['avg_final_score'] != float('inf') else "inf",
+                str(stats['timeouts']),
+                str(stats['failures']),
+                f"{synthetic['basic_score']:.2f}" if isinstance(synthetic['basic_score'], (int, float)) else "N/A",
+                f"{synthetic['improved_score']:.2f}" if isinstance(synthetic['improved_score'], (int, float)) else "N/A"
+            ]
+            print("\t".join(tsv_values))
         
         print("-" * 80)
+        print()
         
-        # Detailed statistics
-        if any(c.statistics['successes'] > 0 for c in contestants):
-            print("\nDetailed Statistics (Successful Contestants Only):")
-            print("-" * 80)
-            
-            for contestant in contestants:
-                if contestant.statistics['successes'] == 0:
-                    continue
-                
-                stats = contestant.statistics
-                print(f"\n{contestant.name} ({contestant.source}):")
-                print(f"  Success rate: {stats['success_rate']*100:.1f}% ({stats['successes']}/{stats['total_runs']} runs)")
-                
-                if stats['avg_solve_time']:
-                    print(f"  Solve time: {stats['avg_solve_time']:.1f}s avg, {stats['median_solve_time']:.1f}s median")
-                    print(f"              {stats['min_solve_time']:.1f}s min, {stats['max_solve_time']:.1f}s max")
-                    if stats['solve_time_stdev'] > 0:
-                        print(f"              {stats['solve_time_stdev']:.1f}s std dev")
-                
-                print(f"  Final score: {stats['best_final_score']:.1f} best, {stats['avg_final_score']:.1f} avg")
-                print(f"  Timeouts: {stats['timeouts']}, Failures: {stats['failures']}")
+        # Ranking 1: By Real Performance (success rate, then average solve time)
+        print("RANKING 1: BY REAL PERFORMANCE")
+        print("-" * 50)
+        real_ranking = sorted(contestants, 
+                             key=lambda c: (-c.statistics['success_rate'], 
+                                          c.statistics['avg_solve_time'] or float('inf')))
+        
+        print(f"{'Rank':<4} {'Name':<20} {'Success%':<8} {'Avg Time':<10} {'Best Score':<10}")
+        print("-" * 50)
+        for i, contestant in enumerate(real_ranking, 1):
+            stats = contestant.statistics
+            success_pct = f"{stats['success_rate']*100:.1f}%"
+            avg_time = f"{stats['avg_solve_time']:.1f}s" if stats['avg_solve_time'] is not None else "N/A"
+            best_score = f"{stats['best_final_score']:.1f}" if stats['best_final_score'] != float('inf') else "∞"
+            print(f"{i:<4} {contestant.name:<20} {success_pct:<8} {avg_time:<10} {best_score:<10}")
+        
+        print()
+        
+        # Ranking 2: By Basic Synthetic Score (lower is better)
+        print("RANKING 2: BY BASIC SYNTHETIC SCORE (Galapagos basic)")
+        print("-" * 50)
+        basic_ranking = sorted([c for c in contestants if hasattr(c, 'synthetic_scores')], 
+                              key=lambda c: c.synthetic_scores['basic_score'])
+        
+        print(f"{'Rank':<4} {'Name':<20} {'Basic Score':<12} {'Success%':<8} {'Avg Time':<10}")
+        print("-" * 50)
+        for i, contestant in enumerate(basic_ranking, 1):
+            stats = contestant.statistics
+            basic_score = f"{contestant.synthetic_scores['basic_score']:.1f}"
+            success_pct = f"{stats['success_rate']*100:.1f}%"
+            avg_time = f"{stats['avg_solve_time']:.1f}s" if stats['avg_solve_time'] is not None else "N/A"
+            print(f"{i:<4} {contestant.name:<20} {basic_score:<12} {success_pct:<8} {avg_time:<10}")
+        
+        print()
+        
+        # Ranking 3: By Improved Synthetic Score (lower is better)
+        print("RANKING 3: BY IMPROVED SYNTHETIC SCORE (Galapagos improved)")
+        print("-" * 50)
+        improved_ranking = sorted([c for c in contestants if hasattr(c, 'synthetic_scores')], 
+                                 key=lambda c: c.synthetic_scores['improved_score'])
+        
+        print(f"{'Rank':<4} {'Name':<20} {'Improved Score':<14} {'Success%':<8} {'Avg Time':<10}")
+        print("-" * 50)
+        for i, contestant in enumerate(improved_ranking, 1):
+            stats = contestant.statistics
+            improved_score = f"{contestant.synthetic_scores['improved_score']:.1f}"
+            success_pct = f"{stats['success_rate']*100:.1f}%"
+            avg_time = f"{stats['avg_solve_time']:.1f}s" if stats['avg_solve_time'] is not None else "N/A"
+            print(f"{i:<4} {contestant.name:<20} {improved_score:<14} {success_pct:<8} {avg_time:<10}")
         
         print("=" * 80)
+        
+        # Correlation analysis
+        successful_contestants = [c for c in contestants if c.statistics['successes'] > 0 and hasattr(c, 'synthetic_scores')]
+        if len(successful_contestants) >= 2:
+            print("\nCORRELATION ANALYSIS:")
+            print("-" * 30)
+            
+            # Extract data for correlation
+            real_scores = []  # Lower avg solve time = better performance
+            basic_scores = []
+            improved_scores = []
+            
+            for contestant in successful_contestants:
+                if contestant.statistics['avg_solve_time'] is not None:
+                    real_scores.append(contestant.statistics['avg_solve_time'])
+                    basic_scores.append(contestant.synthetic_scores['basic_score'])
+                    improved_scores.append(contestant.synthetic_scores['improved_score'])
+            
+            if len(real_scores) >= 2:
+                import statistics
+                
+                # Calculate correlation (basic approximation)
+                def simple_correlation(x, y):
+                    if len(x) != len(y) or len(x) < 2:
+                        return 0
+                    x_mean = statistics.mean(x)
+                    y_mean = statistics.mean(y)
+                    
+                    numerator = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, y))
+                    x_var = sum((xi - x_mean) ** 2 for xi in x)
+                    y_var = sum((yi - y_mean) ** 2 for yi in y)
+                    
+                    if x_var == 0 or y_var == 0:
+                        return 0
+                    return numerator / (x_var * y_var) ** 0.5
+                
+                basic_corr = simple_correlation(real_scores, basic_scores)
+                improved_corr = simple_correlation(real_scores, improved_scores)
+                
+                print(f"Real vs Basic Synthetic:    {basic_corr:.3f}")
+                print(f"Real vs Improved Synthetic: {improved_corr:.3f}")
+                print("(Positive correlation = synthetic predicts reality well)")
+            else:
+                print("Not enough data for correlation analysis")
+        else:
+            print("\nNot enough successful contestants for correlation analysis")
 
 
 def create_firelight_tournament(design_id: int, **kwargs) -> FirelightTournament:

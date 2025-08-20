@@ -12,7 +12,7 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd):$(pwd)/py_autotweaker:$(pwd)/ftlib/test"
 DESIGN_ID="12710291"
 RUNS_PER_CONTESTANT="3"
 TIMEOUT_PER_RUN="120"  # 2 minutes default (user requested 300s for full run)
-MAX_WORKERS="2"
+MAX_WORKERS=""  # Auto-detect by default
 HANDCRAFTED_CONFIG="example/job_config.json"
 
 # Parse command line arguments
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
             COMPREHENSIVE_MODE=true
             RUNS_PER_CONTESTANT="15"
             TIMEOUT_PER_RUN="600"  # 10 minutes per run
-            MAX_WORKERS="6"
+            MAX_WORKERS=""  # Auto-detect all available cores
             ALGORITHMS="all"  # Special flag for all algorithms
             shift
             ;;
@@ -79,14 +79,14 @@ while [[ $# -gt 0 ]]; do
             echo "  -c, --handcrafted-config  Path to handcrafted config (default: $HANDCRAFTED_CONFIG)"
             echo "  -a, --algorithms LIST     Specific algorithms to test (space-separated)"
             echo "  -q, --quick               Quick test mode (2 runs, 60s timeout)"
-            echo "  -f, --full                Full production mode (10 runs, 300s timeout, 4 workers)"
-            echo "  -C, --comprehensive       COMPREHENSIVE mode (15 runs, 600s timeout, all algorithms)"
+            echo "  -C, --comprehensive       COMPREHENSIVE mode (15 runs, 600s timeout, all algorithms, max workers)"
+            echo "  -f, --full                Full production mode (10 runs, 300s timeout)"
             echo "  -h, --help               Show this help"
             echo ""
             echo "Examples:"
             echo "  $0 -q                         # Quick test"
             echo "  $0 -f                         # Full production run"
-            echo "  $0 -C                         # Full comprehensive everything"
+            echo "  $0 -C                         # Comprehensive mode: all algorithms, max workers"
             echo "  $0 -d 12345678                # Test different design"
             echo "  $0 -a \"Null CornerTurning\"   # Test specific algorithms"
             exit 0
@@ -135,7 +135,7 @@ if [ ! -d "ftlib/test" ]; then
 fi
 
 # Test imports
-python3 -c "
+python3.13 -c "
 import sys
 sys.path.append('.')
 sys.path.append('py_autotweaker') 
@@ -154,78 +154,22 @@ except ImportError as e:
 echo "✅ Prerequisites check passed"
 echo ""
 
-# Build command
-CMD="python3 -c \"
-import sys
-import os
-sys.path.append('.')
-sys.path.append('py_autotweaker')
-sys.path.append('ftlib/test')
-
-from py_autotweaker.firelight_tournament import create_firelight_tournament
-import json
-
-# Create tournament
-tournament = create_firelight_tournament(
-    design_id=$DESIGN_ID,
-    runs_per_contestant=$RUNS_PER_CONTESTANT,
-    timeout_per_run=$TIMEOUT_PER_RUN,
-    max_workers=$MAX_WORKERS
-)
-
-# Add handcrafted contestant
-tournament.add_handcrafted_contestant('$HANDCRAFTED_CONFIG')
-
-# Add algorithm contestants"
-
-if [ -n "$ALGORITHMS" ]; then
-    CMD="$CMD
-algorithms = '$ALGORITHMS'.split()
-tournament.add_algorithm_contestants(algorithms)"
+# Use simple Python runner to avoid bash string issues
+# Auto-detect max workers if not specified
+if [ -z "$MAX_WORKERS" ]; then
+    ACTUAL_MAX_WORKERS=$(python3.13 -c "import multiprocessing; print(multiprocessing.cpu_count())")
 else
-    CMD="$CMD
-tournament.add_algorithm_contestants()"
+    ACTUAL_MAX_WORKERS="$MAX_WORKERS"
 fi
 
-CMD="$CMD
+CMD="python3.13 py_autotweaker/run_firelight_simple.py $DESIGN_ID $RUNS_PER_CONTESTANT $TIMEOUT_PER_RUN $ACTUAL_MAX_WORKERS $HANDCRAFTED_CONFIG"
 
-# Run tournament
-if not tournament.contestants:
-    print('❌ No contestants added to tournament!')
-    exit(1)
-
-results = tournament.run_tournament()
-tournament.print_results(results)
-
-# Save results
-import time
-from pathlib import Path
-
-results_dir = Path('firelight_results')
-results_dir.mkdir(exist_ok=True)
-
-timestamp = time.strftime('%Y%m%d_%H%M%S')
-results_file = results_dir / f'firelight_{$DESIGN_ID}_{timestamp}.json'
-
-json_results = {
-    'tournament_info': results['tournament_info'],
-    'contestants': []
-}
-
-for contestant in results['contestants']:
-    json_results['contestants'].append({
-        'name': contestant.name,
-        'source': contestant.source,
-        'waypoints': contestant.waypoints,
-        'statistics': contestant.statistics,
-        'runs': contestant.runs
-    })
-
-with open(results_file, 'w') as f:
-    json.dump(json_results, f, indent=2, default=str)
-
-print(f'\\n💾 Results saved to: {results_file}')
-\""
+# Add algorithms parameter  
+if [ -n "$ALGORITHMS" ]; then
+    CMD="$CMD $ALGORITHMS"
+else
+    CMD="$CMD none"
+fi
 
 echo "🏁 Starting Firelight tournament..."
 echo ""

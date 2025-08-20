@@ -60,49 +60,25 @@ def load_maze_like_levels(tsv_path: str) -> List[str]:
 def convert_world_to_pixel_coords(waypoints: List[Dict[str, float]], 
                                  screenshot_shape: Tuple[int, int]) -> List[Dict[str, float]]:
     """Convert waypoints from world coordinates to pixel coordinates."""
-    height, width = screenshot_shape
+    # Use coordinate transform utility for consistency
+    try:
+        from .coordinate_transform import world_to_pixel
+    except ImportError:
+        from coordinate_transform import world_to_pixel
     
-    # Calculate world-to-pixel transformation
-    scale_x = width / (WORLD_MAX_X - WORLD_MIN_X)
-    scale_y = height / (WORLD_MAX_Y - WORLD_MIN_Y)
-    
-    pixel_waypoints = []
-    for wp in waypoints:
-        pixel_x = (wp['x'] - WORLD_MIN_X) * scale_x
-        pixel_y = (wp['y'] - WORLD_MIN_Y) * scale_y
-        pixel_radius = wp['radius'] * min(scale_x, scale_y)  # Scale radius appropriately
-        
-        pixel_waypoints.append({
-            'x': pixel_x,
-            'y': pixel_y,
-            'radius': pixel_radius
-        })
-    
-    return pixel_waypoints
+    return world_to_pixel(waypoints, screenshot_shape)
 
 
 def convert_pixel_to_world_coords(waypoints: List[Dict[str, float]], 
                                  screenshot_shape: Tuple[int, int]) -> List[Dict[str, float]]:
     """Convert waypoints from pixel coordinates to world coordinates."""
-    height, width = screenshot_shape
+    # Use coordinate transform utility for consistency
+    try:
+        from .coordinate_transform import pixel_to_world
+    except ImportError:
+        from coordinate_transform import pixel_to_world
     
-    # Calculate pixel-to-world transformation
-    scale_x = (WORLD_MAX_X - WORLD_MIN_X) / width
-    scale_y = (WORLD_MAX_Y - WORLD_MIN_Y) / height
-    
-    world_waypoints = []
-    for wp in waypoints:
-        world_x = WORLD_MIN_X + wp['x'] * scale_x
-        world_y = WORLD_MIN_Y + wp['y'] * scale_y
-        world_radius = wp['radius'] * max(scale_x, scale_y)  # Scale radius appropriately
-        
-        world_waypoints.append({
-            'x': world_x,
-            'y': world_y,
-            'radius': world_radius
-        })
-    
-    return world_waypoints
+    return pixel_to_world(waypoints, screenshot_shape)
 
 
 def create_test_screenshot(design_struct: FCDesignStruct, 

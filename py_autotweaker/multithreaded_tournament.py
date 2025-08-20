@@ -123,6 +123,7 @@ class TournamentConfig:
     verbose: bool = True
     save_individual_results: bool = False  # Save each result immediately
     early_termination_threshold: float = 0.8  # Stop if 80% of algorithms fail consistently
+    dry_run: bool = False  # If True, validate configuration without running algorithms
     
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -172,6 +173,155 @@ class WaypointTournament:
         """Add a generator class to the tournament (compatibility method)."""
         generator = generator_class(*args, **kwargs)
         self.add_generator(generator)
+    
+    def dry_run_validation(self, test_cases: List[Tuple[str, Union[np.ndarray, Any]]]) -> Dict[str, Any]:
+        """Perform dry run validation without executing algorithms.
+        
+        Validates:
+        - Generator imports and instantiation
+        - Test case format and accessibility
+        - Configuration parameters
+        - Subprocess runner availability
+        - File system permissions
+        
+        Returns:
+            Validation results with detailed error information
+        """
+        print("🔍 DRY RUN: Validating tournament configuration...")
+        
+        validation_results = {
+            'config_valid': True,
+            'generators_valid': True,
+            'test_cases_valid': True,
+            'subprocess_runner_valid': True,
+            'file_permissions_valid': True,
+            'errors': [],
+            'warnings': [],
+            'summary': {}
+        }
+        
+        # 1. Validate configuration
+        try:
+            effective_workers = self.config.effective_max_workers
+            validation_results['summary']['effective_workers'] = effective_workers
+            print(f"   ✅ Configuration: {effective_workers} workers, {self.config.timeout_per_algorithm}s timeout")
+        except Exception as e:
+            validation_results['config_valid'] = False
+            validation_results['errors'].append(f"Config validation failed: {e}")
+            print(f"   ❌ Configuration: {e}")
+        
+        # 2. Validate generators
+        generator_status = []
+        for i, generator in enumerate(self.generators):
+            try:
+                # Test generator attributes
+                generator_name = getattr(generator, 'name', f'Generator_{i}')
+                
+                # Test generator method exists
+                if not hasattr(generator, 'generate_waypoints'):
+                    raise AttributeError(f"Generator {generator_name} missing generate_waypoints method")
+                
+                # Test with small dummy screenshot
+                dummy_screenshot = np.zeros((10, 10), dtype=np.int32)
+                _ = generator.generate_waypoints(dummy_screenshot)
+                
+                generator_status.append({'name': generator_name, 'status': 'valid'})
+                print(f"   ✅ Generator: {generator_name}")
+                
+            except Exception as e:
+                validation_results['generators_valid'] = False
+                error_msg = f"Generator {getattr(generator, 'name', f'#{i}')} failed: {e}"
+                validation_results['errors'].append(error_msg)
+                generator_status.append({'name': getattr(generator, 'name', f'#{i}'), 'status': 'failed', 'error': str(e)})
+                print(f"   ❌ Generator: {error_msg}")
+        
+        validation_results['summary']['generators'] = generator_status
+        
+        # 3. Validate test cases
+        test_case_status = []
+        for test_name, screenshot in test_cases:
+            try:
+                # Validate screenshot format
+                if not isinstance(screenshot, np.ndarray):
+                    raise TypeError(f"Screenshot for {test_name} is not numpy array")
+                
+                if len(screenshot.shape) != 2:
+                    raise ValueError(f"Screenshot for {test_name} is not 2D array")
+                
+                test_case_status.append({'name': test_name, 'shape': screenshot.shape, 'status': 'valid'})
+                print(f"   ✅ Test case: {test_name} ({screenshot.shape})")
+                
+            except Exception as e:
+                validation_results['test_cases_valid'] = False
+                error_msg = f"Test case {test_name} failed: {e}"
+                validation_results['errors'].append(error_msg)
+                test_case_status.append({'name': test_name, 'status': 'failed', 'error': str(e)})
+                print(f"   ❌ Test case: {error_msg}")
+        
+        validation_results['summary']['test_cases'] = test_case_status
+        
+        # 4. Validate subprocess runner
+        try:
+            runner_script = os.path.join(os.path.dirname(__file__), 'subprocess_runner.py')
+            if not os.path.exists(runner_script):
+                raise FileNotFoundError(f"Subprocess runner not found: {runner_script}")
+            
+            # Test that we can import the subprocess runner functions
+            sys.path.insert(0, os.path.dirname(__file__))
+            from subprocess_runner import create_generator
+            _ = create_generator('Null')  # Test basic generator creation
+            
+            print(f"   ✅ Subprocess runner: {runner_script}")
+            validation_results['summary']['subprocess_runner'] = runner_script
+            
+        except Exception as e:
+            validation_results['subprocess_runner_valid'] = False
+            error_msg = f"Subprocess runner validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ Subprocess runner: {error_msg}")
+        
+        # 5. Validate file permissions (for temp files)
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+b', delete=True, suffix='.pkl') as f:
+                test_data = {'test': 'data'}
+                pickle.dump(test_data, f)
+                f.flush()
+                # Try to read it back
+                f.seek(0)
+                loaded_data = pickle.load(f)
+                assert loaded_data == test_data
+            
+            print(f"   ✅ File permissions: Temporary file creation/deletion working")
+            
+        except Exception as e:
+            validation_results['file_permissions_valid'] = False
+            error_msg = f"File permissions validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ File permissions: {error_msg}")
+        
+        # Overall validation summary
+        all_valid = all([
+            validation_results['config_valid'],
+            validation_results['generators_valid'], 
+            validation_results['test_cases_valid'],
+            validation_results['subprocess_runner_valid'],
+            validation_results['file_permissions_valid']
+        ])
+        
+        print(f"\n🎯 DRY RUN SUMMARY:")
+        if all_valid:
+            print(f"   ✅ All validations passed - tournament ready to run")
+            print(f"   📊 {len(self.generators)} generators × {len(test_cases)} test cases = {len(self.generators) * len(test_cases)} total tasks")
+            estimated_time = (len(self.generators) * len(test_cases) * self.config.timeout_per_algorithm) / self.config.effective_max_workers
+            print(f"   ⏱️  Estimated max execution time: {estimated_time:.1f} seconds")
+        else:
+            error_count = len(validation_results['errors'])
+            print(f"   ❌ {error_count} validation errors found - fix before running")
+            for error in validation_results['errors']:
+                print(f"      • {error}")
+        
+        return validation_results
     
     def _create_subprocess_task(self, generator_name: str, test_case_name: str, 
                               screenshot_data: bytes) -> str:
@@ -273,6 +423,10 @@ class WaypointTournament:
         
         if not test_cases:
             raise ValueError("No test cases provided")
+        
+        # Handle dry run mode
+        if self.config.dry_run:
+            return self.dry_run_validation(test_cases)
         
         start_time = time.time()
         

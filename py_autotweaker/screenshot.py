@@ -263,11 +263,14 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List[Dict[str, floa
     # Image dimensions
     height, width = rgb_image.shape[:2]
     
-    # World to pixel coordinate conversion
+    # Use coordinate transform utility
+    try:
+        from .coordinate_transform import world_point_to_pixel
+    except ImportError:
+        from coordinate_transform import world_point_to_pixel
+    
     def world_to_pixel(world_x, world_y):
-        pixel_x = (world_x - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
-        pixel_y = (world_y - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
-        return int(pixel_x), int(pixel_y)
+        return world_point_to_pixel(world_x, world_y, (width, height))
     
     # Define colors
     waypoint_color = (128, 128, 128)  # Joint gray

@@ -270,6 +270,116 @@ def systematic_valley_detection(screenshot: np.ndarray, waypoints: List[Dict[str
     return valley_fraction, analysis
 
 
+def analyze_minima_plausibility(screenshot: np.ndarray, waypoints: List[Dict[str, float]], 
+                               sources: List[Tuple[int, int]], sinks: List[Tuple[int, int]]) -> float:
+    """
+    Enhanced valley detection with plausibility assessment for the new local minima levels.
+    
+    Differentiates between plausible traps (on reasonable paths) vs out-of-the-way minima.
+    """
+    height, width = screenshot.shape
+    
+    # Compute distance field
+    distance_field = compute_distance_field(screenshot, waypoints)
+    
+    # Find local minima
+    local_minima = detect_local_minima_numpy(distance_field, screenshot)
+    
+    if not np.any(local_minima):
+        return 0.0
+    
+    # Calculate flow field (simplified version)
+    # Flow points toward nearest sink
+    flow_x = np.zeros((height, width))
+    flow_y = np.zeros((height, width))
+    
+    if sinks:
+        y_coords, x_coords = np.ogrid[:height, :width]
+        
+        for sx, sy in sinks:
+            # Direction toward this sink
+            dx = sx - x_coords
+            dy = sy - y_coords
+            dist = np.sqrt(dx**2 + dy**2)
+            
+            # Normalize (avoid division by zero)
+            valid = dist > 0
+            flow_x[valid] += dx[valid] / dist[valid]
+            flow_y[valid] += dy[valid] / dist[valid]
+    
+    # Calculate plausibility for each local minimum
+    minima_positions = list(zip(*np.where(local_minima)))
+    plausible_penalty = 0.0
+    
+    for y, x in minima_positions:
+        # Factor 1: Distance to main path (sources to sinks)
+        # Simplified: distance to nearest source or sink
+        min_dist_to_important = float('inf')
+        for sx, sy in sources + sinks:
+            dist = math.sqrt((x - sx)**2 + (y - sy)**2)
+            min_dist_to_important = min(min_dist_to_important, dist)
+        
+        path_factor = 1.0 / (1.0 + min_dist_to_important / 10.0)
+        
+        # Factor 2: Flow convergence (how much flow points here)
+        convergence = 0.0
+        count = 0
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < width and 0 <= ny < height and (dx != 0 or dy != 0):
+                    # Vector toward center
+                    target_x, target_y = -dx, -dy
+                    target_len = math.sqrt(target_x**2 + target_y**2)
+                    if target_len > 0:
+                        target_x /= target_len
+                        target_y /= target_len
+                        
+                        # Flow alignment
+                        flow_len = math.sqrt(flow_x[ny, nx]**2 + flow_y[ny, nx]**2)
+                        if flow_len > 0:
+                            norm_fx = flow_x[ny, nx] / flow_len
+                            norm_fy = flow_y[ny, nx] / flow_len
+                            alignment = norm_fx * target_x + norm_fy * target_y
+                            convergence += max(0, alignment)
+                            count += 1
+        
+        convergence_factor = convergence / count if count > 0 else 0.0
+        
+        # Factor 3: Escape difficulty (wall density around point)
+        wall_count = 0
+        total_neighbors = 0
+        for dy in range(-3, 4):
+            for dx in range(-3, 4):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < width and 0 <= ny < height:
+                    total_neighbors += 1
+                    if screenshot[ny, nx] == 1:
+                        wall_count += 1
+        
+        wall_factor = wall_count / total_neighbors if total_neighbors > 0 else 0.0
+        
+        # Overall plausibility score
+        plausibility = (
+            0.5 * path_factor +      # Close to important areas
+            0.3 * convergence_factor + # Flow converges here
+            0.2 * wall_factor        # Hard to escape
+        )
+        
+        # Weight by plausibility
+        plausible_penalty += plausibility
+    
+    # Normalize by total passable area
+    total_passable = np.sum(screenshot != 1)
+    if total_passable == 0:
+        return 0.0
+    
+    # Convert to valley fraction estimate
+    valley_fraction = min(1.0, plausible_penalty / (total_passable / 100.0))
+    
+    return valley_fraction
+
+
 def quick_valley_detection_numpy(screenshot: np.ndarray, waypoints: List[Dict[str, float]]) -> float:
     """
     Fast valley detection using pure numpy operations for performance.

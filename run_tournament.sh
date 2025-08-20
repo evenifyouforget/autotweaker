@@ -49,8 +49,8 @@ MODES:
 OPTIONS:
     -l, --max-levels N     Maximum real levels to test (default: 10)
     -a, --advanced         Include all creative algorithms (8+ total, slower)
-    -f, --full             Test all 100 REAL levels with creative algorithms
-    -c, --comprehensive    Use comprehensive analysis system (saves detailed results)
+    -C, --comprehensive    COMPREHENSIVE mode: All available levels, all algorithms, max threads, extended timeouts
+    -f, --full             FULL mode: Same as comprehensive (for compatibility)
     -m, --multithreaded    Use multithreaded execution with timeouts (faster, recommended)
     -F, --fast             Quick test mode (20 levels max, fast algorithms)
     -t, --timeout N        Timeout per algorithm in seconds (default: 10)
@@ -62,14 +62,15 @@ EXAMPLES:
     $0 synthetic -a             # Synthetic with all 8+ creative algorithms  
     $0 real -l 5                # Test 5 real levels (basic algorithms)
     $0 real -a                  # Test 10 real levels with creative algorithms
-    $0 -f                       # FULL TEST: All 100 real levels with all algorithms
+    $0 -C                       # COMPREHENSIVE: All available levels with all algorithms
+    $0 -f                       # FULL: Same as comprehensive (compatibility)
     $0 -m -a                    # FAST: Multithreaded with all algorithms (recommended)
     $0 -m -F                    # Quick multithreaded demo (20 levels, 10s timeout)
     $0 list -a                  # List all algorithms including creative ones
 
 SPECIAL MODES:
-    -f, --full          Equivalent to: real -l 100 -a -c
-    -c, --comprehensive Uses advanced analysis system with JSON result saving
+    -C, --comprehensive All available levels, all algorithms, max threads, JSON saving
+    -f, --full          Same as comprehensive (for compatibility)
     -F, --fast          Limits to 20 levels and uses optimized quick algorithms
 
 REQUIREMENTS:
@@ -117,16 +118,21 @@ while [[ $# -gt 0 ]]; do
             ADVANCED_FLAG="--advanced"
             shift
             ;;
-        -f|--full)
+        -C|--comprehensive)
             MODE="real"
-            MAX_LEVELS=100
+            MAX_LEVELS=""  # Use all available levels (auto-detect from TSV)
             ADVANCED_FLAG="--advanced"
             COMPREHENSIVE_FLAG="--comprehensive"
-            print_status "FULL MODE: Testing all 100 real levels with comprehensive analysis"
+            print_status "COMPREHENSIVE MODE: All available levels, all algorithms, max threads"
             shift
             ;;
-        -c|--comprehensive)
+        -f|--full)
+            # Same as comprehensive for compatibility
+            MODE="real"
+            MAX_LEVELS=""  # Use all available levels (auto-detect from TSV)
+            ADVANCED_FLAG="--advanced"
             COMPREHENSIVE_FLAG="--comprehensive"
+            print_status "FULL MODE: Same as comprehensive (all available levels, all algorithms, max threads)"
             shift
             ;;
         -m|--multithreaded)
@@ -216,7 +222,7 @@ print_status "Checking Python dependencies..."
 MISSING_DEPS=""
 
 for dep in numpy scipy networkx; do
-    if ! python3 -c "import $dep" 2>/dev/null; then
+    if ! python3.13 -c "import $dep" 2>/dev/null; then
         MISSING_DEPS="$MISSING_DEPS $dep"
     fi
 done
@@ -229,7 +235,7 @@ fi
 # Build command based on mode
 if [[ "$MULTITHREADED_FLAG" == "--multithreaded" ]]; then
     # Use multithreaded tournament system (Galapagos)
-    CMD="python3 py_autotweaker/experimental_comprehensive_tournament.py"
+    CMD="python3.13 py_autotweaker/experimental_comprehensive_tournament.py"
     
     if [[ "$MODE" == "real" || "$MODE" == "mixed" ]]; then
         CMD="$CMD --real --max-levels $MAX_LEVELS"
@@ -252,12 +258,35 @@ if [[ "$MULTITHREADED_FLAG" == "--multithreaded" ]]; then
     
 elif [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
     # Use comprehensive tournament system (Galapagos)
-    CMD="python3 py_autotweaker/experimental_comprehensive_tournament.py"
+    CMD="python3.13 py_autotweaker/experimental_comprehensive_tournament.py"
     
     if [[ "$FAST_MODE" == "true" ]]; then
         CMD="$CMD --fast"
     else
-        CMD="$CMD --max-levels $MAX_LEVELS --creative"
+        if [ -n "$MAX_LEVELS" ]; then
+            CMD="$CMD --max-levels $MAX_LEVELS"
+        fi
+        
+        # Add mode specification
+        if [[ "$MODE" == "real" ]]; then
+            CMD="$CMD --real"
+        elif [[ "$MODE" == "synthetic" ]]; then
+            CMD="$CMD --synthetic"
+        else
+            CMD="$CMD --synthetic"  # Default to synthetic
+        fi
+        
+        # Add algorithm categories for full mode
+        if [[ "$ADVANCED_FLAG" == "--advanced" ]]; then
+            CMD="$CMD --creative --weird --learning --web-inspired"
+        else
+            CMD="$CMD --creative"
+        fi
+    fi
+    
+    # Add comprehensive flag if set
+    if [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
+        CMD="$CMD --comprehensive"
     fi
     
     if [[ -n "$QUIET_FLAG" ]]; then
@@ -267,7 +296,7 @@ elif [[ "$COMPREHENSIVE_FLAG" == "--comprehensive" ]]; then
     print_status "Using comprehensive tournament system"
 else
     # Use basic tournament system
-    CMD="python3 py_autotweaker/waypoint_test_runner.py --mode $MODE"
+    CMD="python3.13 py_autotweaker/waypoint_test_runner.py --mode $MODE"
     
     if [[ -n "$MAX_LEVELS" && ("$MODE" == "real" || "$MODE" == "mixed") ]]; then
         CMD="$CMD --max-levels $MAX_LEVELS"
@@ -329,12 +358,12 @@ echo "  - Use 'synthetic' mode for quick algorithm development and testing"
 echo "  - Use 'real' mode to test on actual Fantastic Contraption levels" 
 echo "  - Use 'mixed' mode for comprehensive evaluation on both types"
 echo "  - Add --advanced to include creative algorithms (8+ total)"
-echo "  - Use --full for complete testing: all 100 levels with all algorithms"
-echo "  - Use --comprehensive for detailed analysis and JSON result saving"
+echo "  - Use --comprehensive (-C) for complete testing: all available levels with all algorithms"
+echo "  - Use --full (-f) for the same as comprehensive (compatibility)"
 echo "  - Use --fast for quick demonstrations (20 levels, optimized algorithms)"
 echo ""
 echo "Entry Points:"
 echo "  ./run_tournament.sh --multithreaded --advanced  # FASTEST: Parallel execution (recommended)"
-echo "  ./run_tournament.sh --full                      # Complete 100-level tournament"  
+echo "  ./run_tournament.sh --comprehensive             # Complete tournament: all levels + algorithms"  
 echo "  ./run_tournament.sh --multithreaded --fast      # Quick parallel demo"
 echo "========================================================================"
