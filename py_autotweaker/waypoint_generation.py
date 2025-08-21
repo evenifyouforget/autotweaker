@@ -239,21 +239,15 @@ class CornerTurningGenerator(WaypointGenerator):
         return {'x': float(x), 'y': float(y), 'radius': best_radius}
     
     def _is_waypoint_valid(self, screenshot: np.ndarray, x: float, y: float, radius: float) -> bool:
-        """Check if a waypoint doesn't intersect with walls."""
+        """Check if a waypoint is valid (waypoints can overlap walls)."""
         height, width = screenshot.shape
         
-        # Check circle doesn't go out of bounds or hit walls
-        min_px = max(0, int(x - radius - 1))
-        max_px = min(width, int(x + radius + 2))
-        min_py = max(0, int(y - radius - 1))
-        max_py = min(height, int(y + radius + 2))
-        
-        for px in range(min_px, max_px):
-            for py in range(min_py, max_py):
-                if (px - x) ** 2 + (py - y) ** 2 <= radius ** 2:
-                    if screenshot[py, px] == 1:  # Wall
-                        return False
-        
+        # Only check bounds - waypoints are allowed to overlap with walls
+        if x - radius < 0 or x + radius >= width:
+            return False
+        if y - radius < 0 or y + radius >= height:
+            return False
+            
         return True
     
     def _is_waypoint_blocking(self, screenshot: np.ndarray, waypoint: Dict[str, float],
