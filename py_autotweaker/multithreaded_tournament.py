@@ -361,7 +361,6 @@ class WaypointTournament:
                         result_data = json.load(f)
                     
                     # Cleanup result file
-                    import os
                     if os.path.exists(result_file):
                         os.unlink(result_file)
                         
@@ -499,7 +498,6 @@ class WaypointTournament:
                                 result_data = json.load(f)
                             
                             # Cleanup result file
-                            import os
                             if os.path.exists(result_file):
                                 os.unlink(result_file)
                                 
