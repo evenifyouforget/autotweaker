@@ -87,7 +87,7 @@ class CornerTurningVariant(ABC):
         return True
 
 
-class GridMarchingCornerTurning(CornerTurningVariant):
+class EuclidCornerTurning(CornerTurningVariant):  # Named after Euclid - systematic, geometric approach
     """
     THE GRID-MARCHING PURIST
     
@@ -222,7 +222,7 @@ class GridMarchingCornerTurning(CornerTurningVariant):
         return False
 
 
-class PhysicsSimulationCornerTurning(CornerTurningVariant):
+class NewtonCornerTurning(CornerTurningVariant):  # Named after Newton - physics simulation enthusiast
     """
     THE PHYSICS ENTHUSIAST
     
@@ -385,7 +385,7 @@ class PhysicsSimulationCornerTurning(CornerTurningVariant):
         return max_radius
 
 
-class RandomizedOptimizationCornerTurning(CornerTurningVariant):
+class DarwinCornerTurning(CornerTurningVariant):  # Named after Darwin - evolutionary optimization
     """
     THE MACHINE LEARNING OPTIMIZER
     
@@ -574,7 +574,7 @@ class RandomizedOptimizationCornerTurning(CornerTurningVariant):
         return False
 
 
-class GeometryAnalyticalCornerTurning(CornerTurningVariant):
+class DescartesCornerTurning(CornerTurningVariant):  # Named after Descartes - analytical geometry master
     """
     THE COMPUTATIONAL GEOMETRY PURIST
     
@@ -793,7 +793,7 @@ class GeometryAnalyticalCornerTurning(CornerTurningVariant):
         return min_distance
 
 
-class HeuristicRulesCornerTurning(CornerTurningVariant):
+class SocratesCornerTurning(CornerTurningVariant):  # Named after Socrates - wisdom through rules and heuristics
     """
     THE PRACTICAL HEURISTICS ENGINEER
     
@@ -999,7 +999,7 @@ class HeuristicRulesCornerTurning(CornerTurningVariant):
         return min(widths) if widths else 10.0
 
 
-class StudentImplementationCornerTurning(CornerTurningVariant):
+class PlatoBetaCornerTurning(CornerTurningVariant):  # Named after Plato - student trying their best, but inexperienced
     """
     THE STRUGGLING STUDENT
     
@@ -1041,7 +1041,7 @@ class StudentImplementationCornerTurning(CornerTurningVariant):
         return waypoints
 
 
-class LazyImplementationCornerTurning(CornerTurningVariant):
+class DiogenesCornerTurning(CornerTurningVariant):  # Named after Diogenes - minimalist, does the bare minimum
     """
     THE LAZY PROGRAMMER
     
@@ -1079,7 +1079,7 @@ class LazyImplementationCornerTurning(CornerTurningVariant):
         return []  # Lazy: give up if simple approach doesn't work
 
 
-class OverengineeredCornerTurning(CornerTurningVariant):
+class LeonardoCornerTurning(CornerTurningVariant):  # Named after da Vinci - overengineered, complex genius
     """
     THE OVERENGINEER
     
@@ -1256,7 +1256,7 @@ class OverengineeredCornerTurning(CornerTurningVariant):
         return candidates[best_idx]
 
 
-class BuggyImplementationCornerTurning(CornerTurningVariant):
+class MurphyCornerTurning(CornerTurningVariant):  # Named after Murphy's Law - everything that can go wrong, will
     """
     THE BUGGY IMPLEMENTATION
     
