@@ -17,6 +17,10 @@ sys.path.append('ftlib/test')
 from py_autotweaker.firelight_tournament import create_firelight_tournament
 
 def main():
+    # Force unbuffered output for real-time progress
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+    
     if len(sys.argv) < 7:
         print("Usage: run_firelight_simple.py <design_id> <runs> <timeout> <workers> <config> <algorithms>")
         sys.exit(1)
@@ -28,7 +32,16 @@ def main():
     handcrafted_config = sys.argv[5]
     algorithms = sys.argv[6] if sys.argv[6] != "none" else None
     
+    print(f"🔥 Starting Firelight tournament for design {design_id}")
+    print(f"   Runs per contestant: {runs_per_contestant}")
+    print(f"   Timeout per run: {timeout_per_run}s")
+    print(f"   Max workers: {max_workers}")
+    print(f"   Algorithms: {algorithms or 'default'}")
+    sys.stdout.flush()
+    
     # Create tournament
+    print("📊 Creating tournament...")
+    sys.stdout.flush()
     tournament = create_firelight_tournament(
         design_id=design_id,
         runs_per_contestant=runs_per_contestant,
@@ -37,9 +50,13 @@ def main():
     )
     
     # Add handcrafted contestant
+    print("🎯 Adding handcrafted contestant...")
+    sys.stdout.flush()
     tournament.add_handcrafted_contestant(handcrafted_config)
     
     # Add algorithm contestants
+    print("🤖 Adding algorithm contestants...")
+    sys.stdout.flush()
     if algorithms == "all":
         tournament.add_algorithm_contestants(['all'])
     elif algorithms:
@@ -53,7 +70,12 @@ def main():
         print('❌ No contestants added to tournament!')
         sys.exit(1)
     
+    print(f"🏃 Running tournament with {len(tournament.contestants)} contestants...")
+    sys.stdout.flush()
     results = tournament.run_tournament()
+    
+    print("📈 Displaying results...")
+    sys.stdout.flush()
     tournament.print_results(results)
     
     # Save results

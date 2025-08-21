@@ -514,12 +514,22 @@ print(json.dumps(result))
         run_start_time = time.time()
         
         try:
-            # Create temporary config file
-            temp_config = {
-                "waypoints": contestant.waypoints,
-                "tickMinimum": 600,
-                "tickMaximum": 4000
-            }
+            # Create temporary config file - inherit from example config
+            base_config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'example', 'job_config.json')
+            
+            # Load base config to inherit tick parameters  
+            if os.path.exists(base_config_path):
+                with open(base_config_path, 'r') as f:
+                    temp_config = json.load(f)
+                # Override waypoints while keeping tick parameters
+                temp_config["waypoints"] = contestant.waypoints
+            else:
+                # Fallback if example config not found
+                temp_config = {
+                    "waypoints": contestant.waypoints,
+                    "tickMinimum": 600,
+                    "tickMaximum": 4000
+                }
             
             temp_config_path = f"/tmp/firelight_config_{contestant.name}_{run_id}_{os.getpid()}.json"
             with open(temp_config_path, 'w') as f:
@@ -887,9 +897,20 @@ print(json.dumps(result))
                         elapsed = time.time() - start_time
                         print(f"[{completed_runs:3d}/{total_runs:3d}] {contestant.name:20} Run {run_id+1:2d}: {status:12} "
                               f"({elapsed:6.1f}s elapsed)")
+                        sys.stdout.flush()
+                        
+                        # Show subprocess errors for debugging
+                        if result['return_code'] != 0:
+                            print(f"  ⚠️  Process error (code {result['return_code']}): {result['stderr'][:200]}")
+                            if result['stdout']:
+                                print(f"  📝 stdout: {result['stdout'][:200]}")
+                            sys.stdout.flush()
                 
                 except Exception as e:
-                    print(f"Error processing run for {contestant.name}: {e}")
+                    print(f"❌ Error processing run for {contestant.name}: {e}")
+                    import traceback
+                    print(f"   Full traceback: {traceback.format_exc()}")
+                    sys.stdout.flush()
                     completed_runs += 1
         
         # Calculate statistics for all contestants
