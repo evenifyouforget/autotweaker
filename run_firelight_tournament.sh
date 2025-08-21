@@ -19,6 +19,8 @@ HANDCRAFTED_CONFIG="example/job_config.json"
 QUICK_MODE=false
 COMPREHENSIVE_MODE=false
 ALGORITHMS=""
+USER_TIMEOUT=""
+USER_RUNS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -27,11 +29,13 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -r|--runs)
-            RUNS_PER_CONTESTANT="$2" 
+            RUNS_PER_CONTESTANT="$2"
+            USER_RUNS="$2"
             shift 2
             ;;
         -t|--timeout)
             TIMEOUT_PER_RUN="$2"
+            USER_TIMEOUT="$2"
             shift 2
             ;;
         -w|--workers)
@@ -53,10 +57,6 @@ while [[ $# -gt 0 ]]; do
         -f|--full|-C|--comprehensive)
             # FULL MODE: Maximum comprehensive everything 
             COMPREHENSIVE_MODE=true
-            RUNS_PER_CONTESTANT="15"
-            TIMEOUT_PER_RUN="600"  # 10 minutes per run
-            MAX_WORKERS=""  # Auto-detect all available cores
-            ALGORITHMS="all"  # Special flag for all algorithms
             echo "🔬 FULL MODE: Maximum comprehensive settings enabled"
             shift
             ;;
@@ -91,12 +91,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Apply mode settings
+# Apply mode settings (but preserve user-specified values)
 if [ "$QUICK_MODE" = true ]; then
-    RUNS_PER_CONTESTANT="2"
-    TIMEOUT_PER_RUN="60"
+    if [ -z "$USER_RUNS" ]; then
+        RUNS_PER_CONTESTANT="2"
+    fi
+    if [ -z "$USER_TIMEOUT" ]; then
+        TIMEOUT_PER_RUN="60"
+    fi
     echo "🚀 Quick mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout"
 elif [ "$COMPREHENSIVE_MODE" = true ]; then
+    if [ -z "$USER_RUNS" ]; then
+        RUNS_PER_CONTESTANT="15"
+    fi
+    if [ -z "$USER_TIMEOUT" ]; then
+        TIMEOUT_PER_RUN="600"  # 10 minutes per run
+    fi
+    if [ -z "$MAX_WORKERS" ]; then
+        MAX_WORKERS=""  # Auto-detect all available cores
+    fi
+    if [ -z "$ALGORITHMS" ]; then
+        ALGORITHMS="all"  # Special flag for all algorithms
+    fi
     echo "🔬 FULL mode enabled: $RUNS_PER_CONTESTANT runs, ${TIMEOUT_PER_RUN}s timeout, all algorithms"
 fi
 
