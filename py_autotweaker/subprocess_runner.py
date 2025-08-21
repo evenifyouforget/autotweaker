@@ -78,6 +78,43 @@ def main():
             pickle.dump(result, f)
             
     except Exception as e:
+        # Log full exception details to help debugging
+        import traceback
+        import datetime
+        
+        # Create error log directory
+        import os
+        os.makedirs('tournament_errors', exist_ok=True)
+        
+        # Log to file with timestamp
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        error_log_path = f'tournament_errors/subprocess_error_{timestamp}_{generator_name}_{test_case_name}.log'
+        
+        with open(error_log_path, 'w') as log_file:
+            log_file.write(f"Subprocess Error: {generator_name} on {test_case_name}\n")
+            log_file.write(f"Timestamp: {timestamp}\n")
+            log_file.write(f"Exception Type: {type(e).__name__}\n")
+            log_file.write(f"Exception Message: {str(e)}\n")
+            log_file.write(f"Full Traceback:\n{traceback.format_exc()}\n")
+            log_file.write(f"Task Data: {task}\n")
+        
+        # Also print first few errors to console
+        error_count_file = 'tournament_errors/error_count.txt'
+        if os.path.exists(error_count_file):
+            with open(error_count_file, 'r') as f:
+                count = int(f.read().strip())
+        else:
+            count = 0
+        
+        count += 1
+        with open(error_count_file, 'w') as f:
+            f.write(str(count))
+            
+        if count <= 3:  # Print first 3 errors to console
+            print(f"\n❌ SUBPROCESS ERROR #{count}: {generator_name} on {test_case_name}")
+            print(f"   Exception: {type(e).__name__}: {str(e)}")
+            print(f"   Full error log: {error_log_path}")
+        
         # Categorize the failure
         error_type = "unknown_error"
         if "Unknown generator" in str(e):
