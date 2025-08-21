@@ -5,7 +5,10 @@
 
 set -e
 
-# Setup paths
+# Setup paths and ftlib environment
+cd ftlib
+source environment.sh
+cd ..
 export PYTHONPATH="${PYTHONPATH}:$(pwd):$(pwd)/py_autotweaker:$(pwd)/ftlib/test"
 
 # Default parameters
