@@ -31,6 +31,20 @@ def create_generator(generator_name: str):
 def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot):
     """Execute a single algorithm on a test case."""
     
+    # Fix import path for subprocess execution
+    import sys
+    import os
+    
+    # Add py_autotweaker to Python path to resolve relative imports
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    
+    # Add parent directory for py_autotweaker package imports  
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+        
     # Create generator using reflection
     generator = create_generator(generator_name)
     
@@ -39,8 +53,11 @@ def execute_algorithm_task(generator_name: str, test_case_name: str, screenshot)
     waypoints = generator.generate_waypoints(screenshot)
     execution_time = time.time() - start_time
     
-    # Score the waypoints
-    from improved_waypoint_scoring import improved_score_waypoint_list
+    # Score the waypoints (use absolute import)
+    try:
+        from improved_waypoint_scoring import improved_score_waypoint_list
+    except ImportError:
+        from py_autotweaker.improved_waypoint_scoring import improved_score_waypoint_list
     score = improved_score_waypoint_list(screenshot, waypoints, penalize_skippable=True)
     
     return {

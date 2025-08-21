@@ -342,14 +342,12 @@ class WaypointTournament:
     def _run_subprocess_task(self, task_file: str, timeout: float) -> TaskResult:
         """Execute a single algorithm task in a subprocess with timeout."""
         
-        # Create subprocess runner script path
-        runner_script = os.path.join(os.path.dirname(__file__), 'subprocess_runner.py')
-        
         try:
-            # Run the subprocess with timeout
+            # Run the subprocess with timeout (as module to fix relative imports)
             result = subprocess.run([
-                sys.executable, runner_script, task_file
-            ], capture_output=True, text=True, timeout=timeout)
+                sys.executable, '-m', 'py_autotweaker.subprocess_runner', task_file
+            ], capture_output=True, text=True, timeout=timeout,
+            cwd=os.path.dirname(os.path.dirname(__file__)))
             
             if result.returncode == 0:
                 # Parse successful result
@@ -465,11 +463,11 @@ class WaypointTournament:
                 task_file = self._create_subprocess_task(
                     generator.name, test_case_name, screenshot_data)
                 
-                # Start subprocess
-                runner_script = os.path.join(os.path.dirname(__file__), 'subprocess_runner.py')
+                # Start subprocess (run as module to fix relative imports)
                 proc = subprocess.Popen([
-                    sys.executable, runner_script, task_file
-                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    sys.executable, '-m', 'py_autotweaker.subprocess_runner', task_file
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, 
+                cwd=os.path.dirname(os.path.dirname(__file__)))
                 
                 processes.append((proc, task_file, generator.name, test_case_name))
             
