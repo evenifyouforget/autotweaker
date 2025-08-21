@@ -233,8 +233,11 @@ class FirelightTournament:
         self.design_struct = designDomToStruct(design_dom)
         
         # Generate screenshot
-        raw_screenshot = screenshot_design(self.design_struct, self.screenshot_dimensions, use_rgb=True)
-        self.screenshot = normalize_screenshot_colors(raw_screenshot)
+        # Use raw integer screenshot with minimal normalization (dynamics -> air)
+        raw_screenshot = screenshot_design(self.design_struct, self.screenshot_dimensions, use_rgb=False)
+        # Convert dynamic pieces (color=2) to air (color=0)
+        self.screenshot = raw_screenshot.copy()
+        self.screenshot[self.screenshot == 2] = 0
         
         print(f"Screenshot generated: {self.screenshot.shape}")
         print(f"Pixel value distribution: {np.bincount(self.screenshot.flatten())}")
