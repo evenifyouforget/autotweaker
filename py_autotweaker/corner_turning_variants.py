@@ -211,13 +211,14 @@ class GridMarchingCornerTurning(CornerTurningVariant):
         }
     
     def _waypoint_hits_wall(self, screenshot: np.ndarray, candidate: WaypointCandidate) -> bool:
-        """Check if waypoint circle intersects any walls."""
-        # Sample points around circle perimeter
-        for angle in np.linspace(0, 2*np.pi, 16):
-            px = int(candidate.x + candidate.radius * np.cos(angle))
-            py = int(candidate.y + candidate.radius * np.sin(angle))
-            if self._is_wall(screenshot, py, px):
-                return True
+        """Check if waypoint circle severely intersects walls (allows 1-pixel overlap)."""
+        # Check if waypoint goes out of bounds 
+        height, width = screenshot.shape
+        if (candidate.x - candidate.radius < -1 or candidate.x + candidate.radius >= width + 1 or
+            candidate.y - candidate.radius < -1 or candidate.y + candidate.radius >= height + 1):
+            return True
+        
+        # Allow waypoints to overlap walls by 1 pixel for discretization safety
         return False
 
 
@@ -562,13 +563,14 @@ class RandomizedOptimizationCornerTurning(CornerTurningVariant):
         return penalty
     
     def _waypoint_hits_wall_float(self, screenshot: np.ndarray, x: float, y: float, radius: float) -> bool:
-        """Check wall collision for float coordinates."""
-        # Sample points around circle
-        for angle in np.linspace(0, 2*np.pi, 16):
-            px = int(x + radius * np.cos(angle))
-            py = int(y + radius * np.sin(angle))
-            if self._is_wall(screenshot, py, px):
-                return True
+        """Check wall collision for float coordinates (allows 1-pixel overlap)."""
+        # Check if waypoint goes out of bounds
+        height, width = screenshot.shape
+        if (x - radius < -1 or x + radius >= width + 1 or
+            y - radius < -1 or y + radius >= height + 1):
+            return True
+        
+        # Allow waypoints to overlap walls by 1 pixel for discretization safety
         return False
 
 
@@ -947,17 +949,17 @@ class HeuristicRulesCornerTurning(CornerTurningVariant):
         return 1.0  # Fallback to minimum radius
     
     def _waypoint_hits_wall_simple(self, screenshot: np.ndarray, location: Tuple[int, int], radius: float) -> bool:
-        """Simple wall collision check."""
+        """Simple wall collision check (allows 1-pixel overlap)."""
         y, x = location
+        height, width = screenshot.shape
         
-        # Check 8 directions
-        for angle in [0, 45, 90, 135, 180, 225, 270, 315]:
-            rad = math.radians(angle)
-            px = int(x + radius * math.cos(rad))
-            py = int(y + radius * math.sin(rad))
-            
-            if self._is_wall(screenshot, py, px):
-                return True
+        # Check if waypoint goes out of bounds
+        if (x - radius < -1 or x + radius >= width + 1 or
+            y - radius < -1 or y + radius >= height + 1):
+            return True
+        
+        # Allow waypoints to overlap walls by 1 pixel for discretization safety
+        return False
                 
         return False
     

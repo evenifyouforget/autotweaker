@@ -392,26 +392,16 @@ class ImprovedCornerTurningGenerator(WaypointGenerator):
         return size_quality * wall_distance_quality
     
     def _is_waypoint_position_valid(self, screenshot: np.ndarray, waypoint: Dict[str, float]) -> bool:
-        """Check if waypoint position is valid (doesn't intersect walls)."""
+        """Check if waypoint position is valid (allows 1 pixel wall overlap)."""
         x, y, radius = waypoint['x'], waypoint['y'], waypoint['radius']
         height, width = screenshot.shape
         
-        # Check circle doesn't intersect with walls
-        num_samples = 12
-        for i in range(num_samples):
-            angle = 2 * math.pi * i / num_samples
-            test_x = x + radius * math.cos(angle)
-            test_y = y + radius * math.sin(angle)
+        # Only check bounds - waypoints can overlap walls by 1 pixel for discretization safety
+        if x - radius < -1 or x + radius >= width + 1:
+            return False
+        if y - radius < -1 or y + radius >= height + 1:
+            return False
             
-            if self._is_wall_at_position(screenshot, test_x, test_y):
-                return False
-        
-        # Check center area
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if self._is_wall_at_position(screenshot, x + dx, y + dy):
-                    return False
-        
         return True
     
     def _waypoint_does_not_obscure_targets(self, screenshot: np.ndarray,
