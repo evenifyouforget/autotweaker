@@ -17,6 +17,8 @@ import json
 import time
 import statistics
 import subprocess
+import logging
+import traceback
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 import numpy as np
@@ -176,8 +178,53 @@ class FirelightTournament:
         self.contestants = []
         self.design_struct = None
         self.screenshot = None
+        self.exception_count = 0
+        
+        # Setup exception logging
+        self._setup_exception_logging()
         
         self._load_design()
+    
+    def _setup_exception_logging(self):
+        """Setup file logging for exceptions."""
+        log_dir = Path('firelight_results')
+        log_dir.mkdir(exist_ok=True)
+        
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        self.exception_log_file = log_dir / f'firelight_exceptions_{self.design_id}_{timestamp}.log'
+        
+        # Setup logger
+        self.exception_logger = logging.getLogger(f'firelight_{self.design_id}')
+        self.exception_logger.setLevel(logging.ERROR)
+        
+        # File handler
+        handler = logging.FileHandler(self.exception_log_file)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.exception_logger.addHandler(handler)
+    
+    def _log_exception(self, context: str, exception: Exception, extra_info: str = ""):
+        """Log exception to both console and file."""
+        self.exception_count += 1
+        
+        error_msg = f"[{self.exception_count}] {context}: {str(exception)}"
+        full_traceback = traceback.format_exc()
+        
+        # Log to file
+        self.exception_logger.error(f"{error_msg}\n{extra_info}\n{full_traceback}\n{'='*80}")
+        
+        # Print first exception details to console  
+        if self.exception_count == 1:
+            print(f"\n❌ FIRST EXCEPTION DETAILS:")
+            print(f"   Context: {context}")
+            print(f"   Error: {str(exception)}")
+            if extra_info:
+                print(f"   Extra: {extra_info}")
+            print(f"   Full details logged to: {self.exception_log_file}")
+            sys.stdout.flush()
+        else:
+            print(f"❌ Exception #{self.exception_count}: {error_msg[:100]}... (logged to file)")
+            sys.stdout.flush()
     
     def _load_design(self):
         """Load design and generate screenshot."""
@@ -226,7 +273,7 @@ class FirelightTournament:
                 if algorithm_names is None or generator.name in algorithm_names or include_all:
                     working_algorithms.append(generator)
         except Exception as e:
-            print(f"Warning: Could not load basic algorithms: {e}")
+            self._log_exception("Loading basic algorithms", e)
         
         # Creative algorithms 
         try:
@@ -242,7 +289,7 @@ class FirelightTournament:
                     if generator.name in successful_creative and (algorithm_names is None or generator.name in algorithm_names):
                         working_algorithms.append(generator)
         except Exception as e:
-            print(f"Warning: Could not load creative algorithms: {e}")
+            self._log_exception("Loading creative algorithms", e)
             
         # Weird algorithms (only if comprehensive mode)
         if include_all:
@@ -253,7 +300,7 @@ class FirelightTournament:
                     working_algorithms.append(generator)
                 print("Added weird algorithms for comprehensive mode")
             except Exception as e:
-                print(f"Warning: Could not load weird algorithms: {e}")
+                self._log_exception("Loading weird algorithms", e)
                 
         # Learning algorithms (only if comprehensive mode, if working)
         if include_all:
@@ -264,7 +311,7 @@ class FirelightTournament:
                     working_algorithms.append(generator)
                 print("Added learning algorithms for comprehensive mode")
             except Exception as e:
-                print(f"Warning: Could not load learning algorithms: {e}")
+                self._log_exception("Loading learning algorithms", e)
                 
         # Web-inspired algorithms (only if comprehensive mode, if working)  
         if include_all:
@@ -275,7 +322,7 @@ class FirelightTournament:
                     working_algorithms.append(generator)
                 print("Added web-inspired algorithms for comprehensive mode")
             except Exception as e:
-                print(f"Warning: Could not load web-inspired algorithms: {e}")
+                self._log_exception("Loading web-inspired algorithms", e)
         
         # Generate waypoints for each algorithm (pure subprocess-based parallelism)
         # Use 1 subprocess = 1 job pattern for true parallelism (no GIL, no threading)
@@ -907,10 +954,11 @@ print(json.dumps(result))
                             sys.stdout.flush()
                 
                 except Exception as e:
-                    print(f"❌ Error processing run for {contestant.name}: {e}")
-                    import traceback
-                    print(f"   Full traceback: {traceback.format_exc()}")
-                    sys.stdout.flush()
+                    self._log_exception(
+                        f"Run processing for {contestant.name} Run {run_id+1}",
+                        e,
+                        f"Completed runs: {completed_runs}/{total_runs}"
+                    )
                     completed_runs += 1
         
         # Calculate statistics for all contestants
@@ -954,6 +1002,11 @@ print(json.dumps(result))
             },
             'contestants': self.contestants
         }
+        
+        # Log exception summary
+        if self.exception_count > 0:
+            print(f"\n⚠️  Tournament completed with {self.exception_count} exception(s)")
+            print(f"    Full exception log: {self.exception_log_file}")
         
         return results
     
