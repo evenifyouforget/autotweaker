@@ -324,17 +324,18 @@ class WaypointTournament:
         return validation_results
     
     def _create_subprocess_task(self, generator_name: str, test_case_name: str, 
-                              screenshot_data: bytes) -> str:
+                              screenshot: np.ndarray) -> str:
         """Create a subprocess task file for isolated execution."""
+        import json
         
         # Create temporary files for input and output
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pkl') as f:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
             task_data = {
                 'generator_name': generator_name,
                 'test_case_name': test_case_name,
-                'screenshot_data': screenshot_data,
+                'screenshot': screenshot.tolist(),  # JSON serializable
             }
-            pickle.dump(task_data, f)
+            json.dump(task_data, f)
             task_file = f.name
         
         return task_file
@@ -344,29 +345,41 @@ class WaypointTournament:
         
         try:
             # Run the subprocess with timeout (as module to fix relative imports)
+            result_file = task_file + '.result'
+            timeout_str = str(timeout)
             result = subprocess.run([
-                sys.executable, '-m', 'py_autotweaker.subprocess_runner', task_file
+                sys.executable, '-m', 'py_autotweaker.subprocess_runner', 
+                task_file, result_file, timeout_str
             ], capture_output=True, text=True, timeout=timeout,
             cwd=os.path.dirname(os.path.dirname(__file__)))
             
             if result.returncode == 0:
-                # Parse successful result
+                # Load result from JSON file
                 try:
-                    result_data = json.loads(result.stdout)
+                    import json
+                    with open(result_file, 'r') as f:
+                        result_data = json.load(f)
+                    
+                    # Cleanup result file
+                    import os
+                    if os.path.exists(result_file):
+                        os.unlink(result_file)
+                        
                     return TaskResult(
                         generator_name=result_data['generator_name'],
                         test_case_name=result_data['test_case_name'],
-                        success=True,
+                        success=result_data.get('success', True),
                         score=result_data.get('score'),
                         waypoints=result_data.get('waypoints'),
                         execution_time=result_data.get('execution_time'),
+                        error_message=result_data.get('error')
                     )
-                except (json.JSONDecodeError, KeyError) as e:
+                except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
                     return TaskResult(
                         generator_name="unknown",
                         test_case_name="unknown", 
                         success=False,
-                        error_message=f"Failed to parse subprocess result: {e}"
+                        error_message=f"Failed to load subprocess result: {e}"
                     )
             else:
                 # Subprocess failed
@@ -458,37 +471,48 @@ class WaypointTournament:
             # Start all processes in batch
             processes = []
             for generator, test_case_name, screenshot in batch:
-                # Serialize screenshot for subprocess
-                screenshot_data = pickle.dumps(screenshot)
+                # Create task file with JSON serialization
                 task_file = self._create_subprocess_task(
-                    generator.name, test_case_name, screenshot_data)
+                    generator.name, test_case_name, screenshot)
                 
                 # Start subprocess (run as module to fix relative imports)
+                result_file = task_file + '.result'
+                timeout_str = str(self.config.timeout_per_algorithm)
                 proc = subprocess.Popen([
-                    sys.executable, '-m', 'py_autotweaker.subprocess_runner', task_file
+                    sys.executable, '-m', 'py_autotweaker.subprocess_runner', 
+                    task_file, result_file, timeout_str
                 ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, 
                 cwd=os.path.dirname(os.path.dirname(__file__)))
                 
-                processes.append((proc, task_file, generator.name, test_case_name))
+                processes.append((proc, task_file, result_file, generator.name, test_case_name))
             
             # Wait for all processes in batch to complete
-            for proc, task_file, generator_name, test_case_name in processes:
+            for proc, task_file, result_file, generator_name, test_case_name in processes:
                 try:
                     stdout, stderr = proc.communicate(timeout=self.config.timeout_per_algorithm)
                     
                     if proc.returncode == 0:
-                        # Parse successful result
+                        # Load successful result from JSON file
                         try:
-                            result_data = json.loads(stdout)
+                            import json
+                            with open(result_file, 'r') as f:
+                                result_data = json.load(f)
+                            
+                            # Cleanup result file
+                            import os
+                            if os.path.exists(result_file):
+                                os.unlink(result_file)
+                                
                             result = TaskResult(
                                 generator_name=result_data['generator_name'],
                                 test_case_name=result_data['test_case_name'],
-                                success=True,
+                                success=result_data.get('success', True),
                                 score=result_data.get('score'),
                                 waypoints=result_data.get('waypoints'),
                                 execution_time=result_data.get('execution_time'),
+                                error_message=result_data.get('error')
                             )
-                        except (json.JSONDecodeError, KeyError) as e:
+                        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
                             result = TaskResult(
                                 generator_name=generator_name,
                                 test_case_name=test_case_name, 

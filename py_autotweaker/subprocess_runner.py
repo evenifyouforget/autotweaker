@@ -19,9 +19,15 @@ import importlib
 sys.path.append(os.path.dirname(__file__))
 
 def load_task(task_file: str):
-    """Load task data from pickle file."""
-    with open(task_file, 'rb') as f:
-        return pickle.load(f)
+    """Load task data from JSON file."""
+    import json
+    import numpy as np
+    with open(task_file, 'r') as f:
+        task = json.load(f)
+    # Convert screenshot back to numpy array
+    if isinstance(task['screenshot'], list):
+        task['screenshot'] = np.array(task['screenshot'], dtype=np.uint8)
+    return task
 
 def create_generator(generator_name: str):
     """Create a generator instance by name using shared reflection."""
@@ -90,9 +96,10 @@ def main():
         start_time = time.time()
         result = execute_algorithm_task(generator_name, test_case_name, screenshot)
         
-        # Save result
-        with open(result_file, 'wb') as f:
-            pickle.dump(result, f)
+        # Save result as JSON
+        import json
+        with open(result_file, 'w') as f:
+            json.dump(result, f)
             
     except Exception as e:
         # Log full exception details to help debugging
@@ -162,8 +169,8 @@ def main():
             'traceback': traceback.format_exc()
         }
         
-        with open(result_file, 'wb') as f:
-            pickle.dump(error_result, f)
+        with open(result_file, 'w') as f:
+            json.dump(error_result, f)
 
 if __name__ == "__main__":
     main()
