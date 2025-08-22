@@ -5,7 +5,7 @@ from subprocess import Popen
 from typing import Any, List, Optional
 from get_design import FCDesignStruct
 from .measure_design import measure_design
-from .mutate_validate import is_design_valid, generate_mutant
+from .mutate_validate import normalize_design, generate_mutant
 
 GardenStatus = namedtuple('GardenStatus', ['num_active_threads', 'best_score'])
 
@@ -112,6 +112,7 @@ class Garden:
         for _ in range(max_new_creatures):
             parent = random.choice(self.creatures)
             child = generate_mutant(parent.design_struct)
-            if not is_design_valid(child):
+            normalize_result = normalize_design(child)
+            if not normalize_design.is_valid:
                 continue
-            self.creatures.append(Creature(child))
+            self.creatures.append(Creature(normalize_result.design))
