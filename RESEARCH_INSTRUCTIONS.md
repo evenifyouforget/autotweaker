@@ -150,3 +150,11 @@ Technically, since the cold storage format is XML, we should be looking at strin
 Anyway, we can consider f(x) to be very close to x (the identity function). Sometimes f(x) = x and we have a fixed point, which is great. But this is not always the case.
 
 If we pack all the fields within a design into a vector X, then overall, what we have is something like F(X) = [f(x) for x in X]. We can then measure M(X) = max(|ulps_difference(x, f(x)) for x in X|). If M(X) = 0 then it means F(X) = X and we have a fixed point, and this is ideal. But this won't always be the case. Maybe we'll never reach a fixed point, and that's why we need a maximum number of iterations.
+
+## Will we know if it's working?
+
+Ultimately, testing in FC is an expensive operation that should be left for the humans.
+
+But at least you can check with the example job. It is a design that "almost solves", therefore our autotweaker should find a solve most of the time if given a reasonable time budget to work with. On main, the success rate is good enough (maybe 90% with infinite time?) that we are willing to use it as CI. If the example job is repeatedly failing on this branch even with a large timeout, we probably messed up quite bad, and we should try to fix what we broke.
+
+I think the extra work we are doing here will cause the runner to be slightly slowed down overall. But there is always a possibility that this higher quality mutate and normalize flow means the autotweaker gets faster at converging overall.
