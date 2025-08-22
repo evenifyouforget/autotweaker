@@ -1,0 +1,856 @@
+#!/usr/bin/env python3
+"""
+Subprocess-based tournament system with isolation and timeouts.
+
+This module provides high-performance tournament execution using:
+- Pure subprocess-based parallel execution (no threading, avoids GIL)
+- Subprocess isolation to prevent algorithm hangs from blocking the tournament
+- Per-algorithm timeouts (default 10s) to handle infinite loops or slow algorithms
+- Progress tracking and early termination on critical failures
+- Robust error handling with detailed failure reporting
+"""
+
+import os
+import sys
+import time
+import json
+import pickle
+import tempfile
+import subprocess
+# Removed threading imports - now using pure subprocess-based parallelism
+from typing import List, Dict, Tuple, Optional, Any, Union, Protocol, runtime_checkable, NamedTuple
+from dataclasses import dataclass, field
+import multiprocessing
+import numpy as np
+
+# Add current directory to path for imports
+sys.path.append(os.path.dirname(__file__))
+
+try:
+    from .improved_waypoint_scoring import improved_score_waypoint_list
+except ImportError:
+    from improved_waypoint_scoring import improved_score_waypoint_list
+
+
+@dataclass(frozen=True)
+class Waypoint:
+    """Structured waypoint data with proper typing."""
+    x: float
+    y: float
+    radius: float = 50.0
+    
+    def to_dict(self) -> Dict[str, float]:
+        """Convert to dictionary format for backward compatibility."""
+        return {'x': self.x, 'y': self.y, 'radius': self.radius}
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, float]) -> 'Waypoint':
+        """Create waypoint from dictionary."""
+        return cls(
+            x=data['x'], 
+            y=data['y'], 
+            radius=data.get('radius', 50.0)
+        )
+
+
+class TestCaseInfo(NamedTuple):
+    """Structured test case information."""
+    name: str
+    screenshot: np.ndarray
+    difficulty: Optional[str] = None
+    
+
+class ExecutionStats(NamedTuple):
+    """Execution statistics for tournament runs."""
+    total_time_seconds: float
+    total_tasks: int
+    successful_tasks: int
+    failed_tasks: int
+    timeout_tasks: int
+    tasks_per_second: float
+
+
+@runtime_checkable
+class WaypointGeneratorProtocol(Protocol):
+    """Protocol for waypoint generators to provide better type checking."""
+    name: str
+    
+    def generate_waypoints(self, screenshot: np.ndarray) -> List[Dict[str, float]]:
+        """Generate waypoints from a screenshot."""
+        ...
+
+
+@dataclass
+class TaskResult:
+    """Result of a single algorithm run on a single test case."""
+    generator_name: str
+    test_case_name: str
+    success: bool
+    score: Optional[float] = None
+    waypoints: Optional[List[Dict[str, float]]] = field(default=None)
+    execution_time: Optional[float] = None
+    error_message: Optional[str] = None
+    timeout: bool = False
+    
+    def __post_init__(self) -> None:
+        """Validate data consistency after initialization."""
+        # Ensure success state is consistent with other fields
+        if self.success and (self.score is None or self.waypoints is None):
+            raise ValueError("Successful results must have score and waypoints")
+        
+        if self.timeout and self.success:
+            raise ValueError("Cannot be both timeout and successful")
+        
+        if self.execution_time is not None and self.execution_time < 0:
+            raise ValueError("Execution time cannot be negative")
+        
+        if self.score is not None and self.score < 0:
+            raise ValueError("Score cannot be negative")
+    
+    @property 
+    def waypoints_typed(self) -> List[Waypoint]:
+        """Get waypoints as strongly-typed Waypoint objects."""
+        if self.waypoints is None:
+            return []
+        return [Waypoint.from_dict(wp) for wp in self.waypoints]
+
+
+@dataclass  
+class TournamentConfig:
+    """Configuration for subprocess tournament execution."""
+    max_workers: Optional[int] = None  # None = auto-detect CPU count
+    timeout_per_algorithm: float = 10.0  # seconds
+    verbose: bool = True
+    save_individual_results: bool = False  # Save each result immediately
+    early_termination_threshold: float = 0.8  # Stop if 80% of algorithms fail consistently
+    dry_run: bool = False  # If True, validate configuration without running algorithms
+    
+    def __post_init__(self) -> None:
+        """Validate configuration parameters."""
+        if self.max_workers is not None and self.max_workers <= 0:
+            raise ValueError("max_workers must be positive")
+        
+        if self.timeout_per_algorithm <= 0:
+            raise ValueError("timeout_per_algorithm must be positive")
+        
+        if not 0 <= self.early_termination_threshold <= 1:
+            raise ValueError("early_termination_threshold must be between 0 and 1")
+    
+    @property
+    def effective_max_workers(self) -> int:
+        """Get the effective number of workers (resolving None to CPU count)."""
+        if self.max_workers is None:
+            return min(32, multiprocessing.cpu_count() + 4)
+        return self.max_workers
+
+
+class WaypointTournament:
+    """High-performance tournament with subprocess-based parallel execution.
+    
+    Supports both single-worker (max_workers=1) and multi-worker execution.
+    This replaces the old single-threaded WaypointTournament implementation.
+    """
+    
+    def __init__(self, config: Optional[TournamentConfig] = None, feature_flags: Optional[Dict[str, bool]] = None):
+        self.config = config or TournamentConfig()
+        self.generators: List[WaypointGeneratorProtocol] = []
+        self.feature_flags = feature_flags or {}  # Compatibility with old interface
+        self.results: Dict[str, Dict[str, Any]] = {}  # Compatibility with old interface
+        
+        if self.config.max_workers is None:
+            self.config.max_workers = min(32, multiprocessing.cpu_count() + 4)
+        
+        if self.config.verbose:
+            workers_desc = "single-threaded" if self.config.max_workers == 1 else f"{self.config.max_workers} workers"
+            print(f"Tournament initialized with {workers_desc}")
+            print(f"Algorithm timeout: {self.config.timeout_per_algorithm}s")
+    
+    def add_generator(self, generator: WaypointGeneratorProtocol) -> None:
+        """Add a waypoint generator to the tournament."""
+        self.generators.append(generator)
+    
+    def add_generator_class(self, generator_class: type[WaypointGeneratorProtocol], *args: Any, **kwargs: Any) -> None:
+        """Add a generator class to the tournament (compatibility method)."""
+        generator = generator_class(*args, **kwargs)
+        self.add_generator(generator)
+    
+    def dry_run_validation(self, test_cases: List[Tuple[str, Union[np.ndarray, Any]]]) -> Dict[str, Any]:
+        """Perform dry run validation without executing algorithms.
+        
+        Validates:
+        - Generator imports and instantiation
+        - Test case format and accessibility
+        - Configuration parameters
+        - Subprocess runner availability
+        - File system permissions
+        
+        Returns:
+            Validation results with detailed error information
+        """
+        print("🔍 DRY RUN: Validating tournament configuration...")
+        
+        validation_results = {
+            'config_valid': True,
+            'generators_valid': True,
+            'test_cases_valid': True,
+            'subprocess_runner_valid': True,
+            'file_permissions_valid': True,
+            'errors': [],
+            'warnings': [],
+            'summary': {}
+        }
+        
+        # 1. Validate configuration
+        try:
+            effective_workers = self.config.effective_max_workers
+            validation_results['summary']['effective_workers'] = effective_workers
+            print(f"   ✅ Configuration: {effective_workers} workers, {self.config.timeout_per_algorithm}s timeout")
+        except Exception as e:
+            validation_results['config_valid'] = False
+            validation_results['errors'].append(f"Config validation failed: {e}")
+            print(f"   ❌ Configuration: {e}")
+        
+        # 2. Validate generators
+        generator_status = []
+        for i, generator in enumerate(self.generators):
+            try:
+                # Test generator attributes
+                generator_name = getattr(generator, 'name', f'Generator_{i}')
+                
+                # Test generator method exists
+                if not hasattr(generator, 'generate_waypoints'):
+                    raise AttributeError(f"Generator {generator_name} missing generate_waypoints method")
+                
+                # Test with small dummy screenshot
+                dummy_screenshot = np.zeros((10, 10), dtype=np.int32)
+                _ = generator.generate_waypoints(dummy_screenshot)
+                
+                generator_status.append({'name': generator_name, 'status': 'valid'})
+                print(f"   ✅ Generator: {generator_name}")
+                
+            except Exception as e:
+                validation_results['generators_valid'] = False
+                error_msg = f"Generator {getattr(generator, 'name', f'#{i}')} failed: {e}"
+                validation_results['errors'].append(error_msg)
+                generator_status.append({'name': getattr(generator, 'name', f'#{i}'), 'status': 'failed', 'error': str(e)})
+                print(f"   ❌ Generator: {error_msg}")
+        
+        validation_results['summary']['generators'] = generator_status
+        
+        # 3. Validate test cases
+        test_case_status = []
+        for test_name, screenshot in test_cases:
+            try:
+                # Validate screenshot format
+                if not isinstance(screenshot, np.ndarray):
+                    raise TypeError(f"Screenshot for {test_name} is not numpy array")
+                
+                if len(screenshot.shape) != 2:
+                    raise ValueError(f"Screenshot for {test_name} is not 2D array")
+                
+                test_case_status.append({'name': test_name, 'shape': screenshot.shape, 'status': 'valid'})
+                print(f"   ✅ Test case: {test_name} ({screenshot.shape})")
+                
+            except Exception as e:
+                validation_results['test_cases_valid'] = False
+                error_msg = f"Test case {test_name} failed: {e}"
+                validation_results['errors'].append(error_msg)
+                test_case_status.append({'name': test_name, 'status': 'failed', 'error': str(e)})
+                print(f"   ❌ Test case: {error_msg}")
+        
+        validation_results['summary']['test_cases'] = test_case_status
+        
+        # 4. Validate subprocess runner
+        try:
+            runner_script = os.path.join(os.path.dirname(__file__), 'subprocess_runner.py')
+            if not os.path.exists(runner_script):
+                raise FileNotFoundError(f"Subprocess runner not found: {runner_script}")
+            
+            # Test that we can import the subprocess runner functions
+            sys.path.insert(0, os.path.dirname(__file__))
+            from subprocess_runner import create_generator
+            _ = create_generator('Null')  # Test basic generator creation
+            
+            print(f"   ✅ Subprocess runner: {runner_script}")
+            validation_results['summary']['subprocess_runner'] = runner_script
+            
+        except Exception as e:
+            validation_results['subprocess_runner_valid'] = False
+            error_msg = f"Subprocess runner validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ Subprocess runner: {error_msg}")
+        
+        # 5. Validate file permissions (for temp files)
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+b', delete=True, suffix='.pkl') as f:
+                test_data = {'test': 'data'}
+                pickle.dump(test_data, f)
+                f.flush()
+                # Try to read it back
+                f.seek(0)
+                loaded_data = pickle.load(f)
+                assert loaded_data == test_data
+            
+            print(f"   ✅ File permissions: Temporary file creation/deletion working")
+            
+        except Exception as e:
+            validation_results['file_permissions_valid'] = False
+            error_msg = f"File permissions validation failed: {e}"
+            validation_results['errors'].append(error_msg)
+            print(f"   ❌ File permissions: {error_msg}")
+        
+        # Overall validation summary
+        all_valid = all([
+            validation_results['config_valid'],
+            validation_results['generators_valid'], 
+            validation_results['test_cases_valid'],
+            validation_results['subprocess_runner_valid'],
+            validation_results['file_permissions_valid']
+        ])
+        
+        print(f"\n🎯 DRY RUN SUMMARY:")
+        if all_valid:
+            print(f"   ✅ All validations passed - tournament ready to run")
+            print(f"   📊 {len(self.generators)} generators × {len(test_cases)} test cases = {len(self.generators) * len(test_cases)} total tasks")
+            estimated_time = (len(self.generators) * len(test_cases) * self.config.timeout_per_algorithm) / self.config.effective_max_workers
+            print(f"   ⏱️  Estimated max execution time: {estimated_time:.1f} seconds")
+        else:
+            error_count = len(validation_results['errors'])
+            print(f"   ❌ {error_count} validation errors found - fix before running")
+            for error in validation_results['errors']:
+                print(f"      • {error}")
+        
+        return validation_results
+    
+    def _create_subprocess_task(self, generator_name: str, test_case_name: str, 
+                              screenshot: np.ndarray) -> str:
+        """Create a subprocess task file for isolated execution."""
+        import json
+        
+        # Create temporary files for input and output
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+            task_data = {
+                'generator_name': generator_name,
+                'test_case_name': test_case_name,
+                'screenshot': screenshot.tolist(),  # JSON serializable
+            }
+            json.dump(task_data, f)
+            task_file = f.name
+        
+        return task_file
+    
+    def _run_subprocess_task(self, task_file: str, timeout: float) -> TaskResult:
+        """Execute a single algorithm task in a subprocess with timeout."""
+        
+        try:
+            # Run the subprocess with timeout (as module to fix relative imports)
+            result_file = task_file + '.result'
+            timeout_str = str(timeout)
+            result = subprocess.run([
+                sys.executable, '-m', 'py_autotweaker.subprocess_runner', 
+                task_file, result_file, timeout_str
+            ], capture_output=True, text=True, timeout=timeout,
+            cwd=os.path.dirname(os.path.dirname(__file__)))
+            
+            if result.returncode == 0:
+                # Load result from JSON file
+                try:
+                    import json
+                    with open(result_file, 'r') as f:
+                        result_data = json.load(f)
+                    
+                    # Cleanup result file
+                    if os.path.exists(result_file):
+                        os.unlink(result_file)
+                        
+                    return TaskResult(
+                        generator_name=result_data['generator_name'],
+                        test_case_name=result_data['test_case_name'],
+                        success=result_data.get('success', True),
+                        score=result_data.get('score'),
+                        waypoints=result_data.get('waypoints'),
+                        execution_time=result_data.get('execution_time'),
+                        error_message=result_data.get('error')
+                    )
+                except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+                    return TaskResult(
+                        generator_name="unknown",
+                        test_case_name="unknown", 
+                        success=False,
+                        error_message=f"Failed to load subprocess result: {e}"
+                    )
+            else:
+                # Subprocess failed
+                return TaskResult(
+                    generator_name="unknown",
+                    test_case_name="unknown",
+                    success=False,
+                    error_message=f"Subprocess failed: {result.stderr}"
+                )
+                
+        except subprocess.TimeoutExpired:
+            return TaskResult(
+                generator_name="unknown", 
+                test_case_name="unknown",
+                success=False,
+                timeout=True,
+                error_message=f"Algorithm timed out after {timeout}s"
+            )
+        except Exception as e:
+            return TaskResult(
+                generator_name="unknown",
+                test_case_name="unknown", 
+                success=False,
+                error_message=f"Subprocess execution failed: {e}"
+            )
+        finally:
+            # Clean up task file
+            try:
+                os.unlink(task_file)
+            except:
+                pass
+    
+    
+    def run_tournament(self, test_cases: List[Tuple[str, Union[np.ndarray, Any]]], 
+                      verbose: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Run the tournament with subprocess-based parallelism.
+        
+        Args:
+            test_cases: List of (test_case_name, screenshot) tuples
+            verbose: Override config verbose setting
+            
+        Returns:
+            Tournament results dictionary with timing and error analysis
+        """
+        
+        if verbose is None:
+            verbose = self.config.verbose
+        
+        if not self.generators:
+            raise ValueError("No generators added to tournament")
+        
+        if not test_cases:
+            raise ValueError("No test cases provided")
+        
+        # Handle dry run mode
+        if self.config.dry_run:
+            return self.dry_run_validation(test_cases)
+        
+        start_time = time.time()
+        
+        if verbose:
+            print(f"\nStarting subprocess tournament:")
+            print(f"  Algorithms: {len(self.generators)}")
+            print(f"  Test cases: {len(test_cases)}")
+            print(f"  Workers: {self.config.max_workers}")
+            print(f"  Total tasks: {len(self.generators) * len(test_cases)}")
+        
+        # Prepare all tasks (only subprocess execution now)
+        tasks = []
+        for generator in self.generators:
+            for test_case_name, screenshot in test_cases:
+                tasks.append((generator, test_case_name, screenshot))
+        
+        results = []
+        completed_tasks = 0
+        total_tasks = len(tasks)
+        
+        # Execute tasks in parallel using subprocess batching
+        # Ensure max_workers is set (fallback if somehow None)
+        max_workers = self.config.max_workers
+        if max_workers is None:
+            max_workers = min(32, multiprocessing.cpu_count() + 4)
+        max_parallel = min(len(tasks), max_workers)
+        
+        for i in range(0, len(tasks), max_parallel):
+            batch = tasks[i:i + max_parallel]
+            
+            # Start all processes in batch
+            processes = []
+            for generator, test_case_name, screenshot in batch:
+                # Create task file with JSON serialization
+                task_file = self._create_subprocess_task(
+                    generator.name, test_case_name, screenshot)
+                
+                # Start subprocess (run as module to fix relative imports)
+                result_file = task_file + '.result'
+                timeout_str = str(self.config.timeout_per_algorithm)
+                proc = subprocess.Popen([
+                    sys.executable, '-m', 'py_autotweaker.subprocess_runner', 
+                    task_file, result_file, timeout_str
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, 
+                cwd=os.path.dirname(os.path.dirname(__file__)))
+                
+                processes.append((proc, task_file, result_file, generator.name, test_case_name))
+            
+            # Wait for all processes in batch to complete
+            for proc, task_file, result_file, generator_name, test_case_name in processes:
+                try:
+                    stdout, stderr = proc.communicate(timeout=self.config.timeout_per_algorithm)
+                    
+                    if proc.returncode == 0:
+                        # Load successful result from JSON file
+                        try:
+                            import json
+                            with open(result_file, 'r') as f:
+                                result_data = json.load(f)
+                            
+                            # Cleanup result file
+                            if os.path.exists(result_file):
+                                os.unlink(result_file)
+                                
+                            result = TaskResult(
+                                generator_name=result_data['generator_name'],
+                                test_case_name=result_data['test_case_name'],
+                                success=result_data.get('success', True),
+                                score=result_data.get('score'),
+                                waypoints=result_data.get('waypoints'),
+                                execution_time=result_data.get('execution_time'),
+                                error_message=result_data.get('error')
+                            )
+                        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+                            result = TaskResult(
+                                generator_name=generator_name,
+                                test_case_name=test_case_name, 
+                                success=False,
+                                error_message=f"Failed to parse subprocess result: {e}"
+                            )
+                    else:
+                        # Subprocess failed
+                        result = TaskResult(
+                            generator_name=generator_name,
+                            test_case_name=test_case_name,
+                            success=False,
+                            error_message=f"Subprocess failed: {stderr}"
+                        )
+                        
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()  # Clean up zombie process
+                    result = TaskResult(
+                        generator_name=generator_name, 
+                        test_case_name=test_case_name,
+                        success=False,
+                        timeout=True,
+                        error_message=f"Algorithm timed out after {self.config.timeout_per_algorithm}s"
+                    )
+                except Exception as e:
+                    try:
+                        proc.kill()
+                        proc.communicate()
+                    except:
+                        pass
+                    result = TaskResult(
+                        generator_name=generator_name,
+                        test_case_name=test_case_name, 
+                        success=False,
+                        error_message=f"Subprocess execution failed: {e}"
+                    )
+                finally:
+                    # Clean up task file
+                    try:
+                        os.unlink(task_file)
+                    except:
+                        pass
+                
+                results.append(result)
+                completed_tasks += 1
+                
+                if verbose and completed_tasks % 10 == 0:
+                    progress = (completed_tasks / total_tasks) * 100
+                    elapsed = time.time() - start_time
+                    print(f"  Progress: {completed_tasks}/{total_tasks} ({progress:.1f}%) "
+                          f"- {elapsed:.1f}s elapsed")
+        
+        total_time = time.time() - start_time
+        
+        if verbose:
+            print(f"\nTournament completed in {total_time:.2f}s")
+            print(f"Tasks per second: {total_tasks / total_time:.1f}")
+        
+        # Analyze results
+        return self._analyze_results(results, test_cases, total_time)
+    
+    def _analyze_results(self, results: List[TaskResult], test_cases: List[Tuple[str, Any]], 
+                        total_time: float) -> Dict[str, Any]:
+        """Analyze tournament results and generate comprehensive statistics."""
+        
+        # Group results by generator
+        generator_results = {}
+        for generator in self.generators:
+            generator_results[generator.name] = {
+                'scores': [],
+                'times': [],
+                'waypoint_counts': [],
+                'successful_runs': 0,
+                'failed_runs': 0,
+                'timeout_runs': 0,
+                'error_messages': [],
+                'failure_types': []  # Track failure categorization
+            }
+        
+        # Process individual results
+        for result in results:
+            gen_name = result.generator_name
+            if gen_name not in generator_results:
+                continue  # Skip unknown generators
+            
+            gen_data = generator_results[gen_name]
+            
+            if result.success:
+                gen_data['successful_runs'] += 1
+                gen_data['scores'].append(result.score or 0.0)
+                gen_data['times'].append(result.execution_time or 0.0)
+                gen_data['waypoint_counts'].append(len(result.waypoints or []))
+            else:
+                if result.timeout:
+                    gen_data['timeout_runs'] += 1
+                    gen_data['failure_types'].append('timeout')
+                else:
+                    gen_data['failed_runs'] += 1
+                    # Extract failure type from error data
+                    failure_type = getattr(result, 'error_type', 'unknown_error')
+                    gen_data['failure_types'].append(failure_type)
+                
+                if result.error_message:
+                    gen_data['error_messages'].append(result.error_message)
+        
+        # Calculate summary statistics
+        for gen_name, gen_data in generator_results.items():
+            if gen_data['scores']:
+                gen_data['avg_score'] = sum(gen_data['scores']) / len(gen_data['scores'])
+                gen_data['total_score'] = sum(gen_data['scores'])
+                gen_data['avg_time'] = sum(gen_data['times']) / len(gen_data['times'])
+                gen_data['avg_waypoints'] = sum(gen_data['waypoint_counts']) / len(gen_data['waypoint_counts'])
+            else:
+                gen_data['avg_score'] = float('inf')
+                gen_data['total_score'] = float('inf')
+                gen_data['avg_time'] = 0.0
+                gen_data['avg_waypoints'] = 0.0
+            
+            # Add compatibility fields for old interface
+            gen_data['error_count'] = gen_data['failed_runs'] + gen_data['timeout_runs']
+            gen_data['skippable_count'] = 0  # Not tracked in this implementation
+            
+            # Determine primary failure type for display
+            if gen_data['failure_types']:
+                from collections import Counter
+                failure_counts = Counter(gen_data['failure_types'])
+                gen_data['primary_failure_type'] = failure_counts.most_common(1)[0][0]
+            else:
+                gen_data['primary_failure_type'] = 'no_failures'
+        
+        # Store results in self.results for compatibility with old interface
+        self.results = generator_results
+        
+        # Performance analysis
+        successful_generators = [name for name, data in generator_results.items() 
+                               if data['successful_runs'] > 0]
+        
+        if successful_generators:
+            best_generator = min(successful_generators, 
+                               key=lambda name: generator_results[name]['avg_score'])
+        else:
+            best_generator = None
+        
+        return {
+            'tournament_results': generator_results,
+            'execution_summary': {
+                'total_time_seconds': total_time,
+                'total_tasks': len(results),
+                'successful_tasks': sum(1 for r in results if r.success),
+                'failed_tasks': sum(1 for r in results if not r.success and not r.timeout),
+                'timeout_tasks': sum(1 for r in results if r.timeout),
+                'tasks_per_second': len(results) / total_time,
+                'best_generator': best_generator,
+                'test_case_count': len(test_cases),
+                'generator_count': len(self.generators)
+            },
+            'configuration': {
+                'max_workers': self.config.max_workers,
+                'timeout_per_algorithm': self.config.timeout_per_algorithm
+            }
+        }
+    
+    def print_results(self, results: Dict[str, Any]):
+        """Print formatted tournament results with quantile-based ranking."""
+        
+        print("\n" + "="*80)
+        exec_type = "SINGLE-THREADED" if self.config.max_workers == 1 else "PARALLEL"
+        print(f"{exec_type} TOURNAMENT RESULTS")
+        print("="*80)
+        
+        exec_summary = results['execution_summary']
+        print(f"Execution time: {exec_summary['total_time_seconds']:.2f}s")
+        print(f"Tasks per second: {exec_summary['tasks_per_second']:.1f}")
+        print(f"Success rate: {exec_summary['successful_tasks']}/{exec_summary['total_tasks']} "
+              f"({100 * exec_summary['successful_tasks']/exec_summary['total_tasks']:.1f}%)")
+        
+        if exec_summary['timeout_tasks'] > 0:
+            print(f"Timeouts: {exec_summary['timeout_tasks']}")
+        
+        print(f"\nAlgorithm Performance:")
+        print("-" * 95)
+        
+        tournament_results = results['tournament_results']
+        
+        # Calculate quantile-based scores
+        quantile_results = self._calculate_quantile_scores(tournament_results)
+        
+        # Add quantile scores to tournament results
+        for gen_name in tournament_results:
+            tournament_results[gen_name]['avg_quantile'] = quantile_results.get(gen_name, 0.0)
+        
+        # Sort by average score
+        sorted_generators = sorted(tournament_results.items(), 
+                                 key=lambda x: x[1]['avg_score'])
+        
+        print(f"{'Rank':<4} {'Algorithm':<20} {'Avg Score':<10} {'Avg Quantile':<12} {'Success':<8} {'Failure Type':<13} {'Avg Time':<10}")
+        print("-" * 105)
+        
+        for rank, (gen_name, gen_data) in enumerate(sorted_generators, 1):
+            success_rate = f"{gen_data['successful_runs']}/{exec_summary['test_case_count']}"
+            avg_score = f"{gen_data['avg_score']:.2f}" if gen_data['avg_score'] != float('inf') else "FAIL"
+            avg_quantile = f"{gen_data['avg_quantile']:.3f}" if gen_data['avg_quantile'] > 0 else "N/A"
+            avg_time = f"{gen_data['avg_time']:.3f}s" if gen_data['avg_time'] > 0 else "N/A"
+            
+            # Determine failure type
+            failure_type = "N/A"
+            if gen_data['successful_runs'] == 0:
+                failure_type = gen_data.get('primary_failure_type', 'unknown')
+            elif gen_data['timeout_runs'] > 0:
+                failure_type = f"timeout({gen_data['timeout_runs']})"
+            
+            print(f"{rank:<4} {gen_name:<20} {avg_score:<10} {avg_quantile:<12} {success_rate:<8} "
+                  f"{failure_type:<13} {avg_time:<10}")
+        
+        # Also show ranking by quantile
+        print(f"\nRanking by Quantile Performance (consistency across levels):")
+        print("-" * 95)
+        
+        # Sort by average quantile (lower is better - closer to rank 1)
+        sorted_by_quantile = sorted(tournament_results.items(), 
+                                  key=lambda x: x[1]['avg_quantile'] if x[1]['avg_quantile'] > 0 else float('inf'))
+        
+        print(f"{'Rank':<4} {'Algorithm':<20} {'Avg Quantile':<12} {'Avg Score':<10} {'Success':<8} {'Timeouts':<8}")
+        print("-" * 95)
+        
+        for rank, (gen_name, gen_data) in enumerate(sorted_by_quantile, 1):
+            if gen_data['avg_quantile'] == 0:  # Skip failed algorithms
+                continue
+            success_rate = f"{gen_data['successful_runs']}/{exec_summary['test_case_count']}"
+            avg_score = f"{gen_data['avg_score']:.2f}" if gen_data['avg_score'] != float('inf') else "FAIL"
+            avg_quantile = f"{gen_data['avg_quantile']:.3f}"
+            
+            print(f"{rank:<4} {gen_name:<20} {avg_quantile:<12} {avg_score:<10} {success_rate:<8} "
+                  f"{gen_data['timeout_runs']:<8}")
+        
+        if exec_summary['best_generator']:
+            print(f"\n🏆 Best performer (by raw score): {exec_summary['best_generator']}")
+        
+        # Find best by quantile
+        best_by_quantile = min([g for g in sorted_by_quantile if g[1]['avg_quantile'] > 0], 
+                             key=lambda x: x[1]['avg_quantile'], default=None)
+        if best_by_quantile:
+            print(f"🎯 Most consistent performer: {best_by_quantile[0]}")
+        
+        print("="*80)
+    
+    def _calculate_quantile_scores(self, tournament_results: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate quantile-based scores for each algorithm.
+        
+        For each test case, ranks algorithms and converts to quantiles.
+        Returns average quantile for each algorithm (lower = better).
+        """
+        from collections import defaultdict
+        
+        # Group scores by test case
+        test_case_scores = defaultdict(dict)  # test_case -> {generator: score}
+        
+        for gen_name, gen_data in tournament_results.items():
+            # Get individual scores for this generator
+            if 'scores' in gen_data and gen_data['successful_runs'] > 0:
+                # Assume scores are parallel with test cases
+                for i, score in enumerate(gen_data['scores']):
+                    if score != float('inf'):  # Only consider successful runs
+                        test_case_scores[i][gen_name] = score
+        
+        # Calculate quantiles for each test case
+        generator_quantiles = defaultdict(list)
+        
+        for test_case, scores in test_case_scores.items():
+            if len(scores) < 2:  # Need at least 2 scores to calculate quantiles
+                continue
+                
+            # Sort generators by score for this test case (lower score = better rank)
+            sorted_generators = sorted(scores.items(), key=lambda x: x[1])
+            
+            # Convert to quantiles (0.0 = best, 1.0 = worst)
+            num_generators = len(sorted_generators)
+            for rank, (gen_name, score) in enumerate(sorted_generators):
+                quantile = rank / (num_generators - 1) if num_generators > 1 else 0.0
+                generator_quantiles[gen_name].append(quantile)
+        
+        # Calculate average quantile for each generator
+        avg_quantiles = {}
+        for gen_name, quantiles in generator_quantiles.items():
+            avg_quantiles[gen_name] = sum(quantiles) / len(quantiles) if quantiles else 0.0
+        
+        return avg_quantiles
+
+
+def create_default_tournament(max_workers: Optional[int] = None, feature_flags: Optional[Dict[str, bool]] = None) -> 'WaypointTournament':
+    """Create a default tournament with basic generators (compatibility function).
+    
+    Args:
+        max_workers: Number of workers (None = auto-detect, 1 = single-threaded)
+        feature_flags: Feature flags (for compatibility, currently ignored)
+    
+    Returns:
+        WaypointTournament configured with basic generators
+    """
+    from waypoint_generation import NullGenerator, CornerTurningGenerator
+    
+    config = TournamentConfig(
+        max_workers=max_workers,
+        timeout_per_algorithm=10.0,
+        verbose=False
+    )
+    
+    tournament = WaypointTournament(config, feature_flags)
+    
+    # Add basic generators
+    tournament.add_generator(NullGenerator())
+    tournament.add_generator(CornerTurningGenerator())
+    
+    return tournament
+
+
+if __name__ == "__main__":
+    # Example usage
+    from waypoint_generation import NullGenerator, CornerTurningGenerator
+    from waypoint_test_runner import create_synthetic_test_cases
+    
+    print("Testing subprocess tournament system...")
+    
+    # Create tournament
+    config = TournamentConfig(
+        max_workers=4,
+        timeout_per_algorithm=5.0,
+        verbose=True
+    )
+    
+    tournament = WaypointTournament(config)
+    
+    # Add generators manually to avoid circular import
+    tournament.add_generator(NullGenerator())
+    tournament.add_generator(CornerTurningGenerator())
+    
+    # Run on synthetic test cases
+    test_cases = create_synthetic_test_cases()
+    results = tournament.run_tournament(test_cases)
+    
+    # Print results
+    tournament.print_results(results)

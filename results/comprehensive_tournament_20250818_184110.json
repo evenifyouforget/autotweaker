@@ -1,0 +1,154 @@
+{
+  "tournament_results": {
+    "Null": {
+      "scores": [
+        0.0,
+        623.0769230769231,
+        0.0
+      ],
+      "times": [
+        2.1457672119140625e-06,
+        2.384185791015625e-06,
+        2.6226043701171875e-06
+      ],
+      "waypoint_counts": [
+        0,
+        0,
+        0
+      ],
+      "successful_runs": 3,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": 207.6923076923077,
+      "total_score": 623.0769230769231,
+      "avg_time": 2.384185791015625e-06,
+      "avg_waypoints": 0.0
+    },
+    "CornerTurning": {
+      "scores": [
+        641.1764705882354,
+        658.8235294117646,
+        26.096385542168676,
+        0.0,
+        0.0,
+        51.382716049382715
+      ],
+      "times": [
+        0.07649111747741699,
+        0.07916736602783203,
+        0.027028799057006836,
+        0.0012848377227783203,
+        0.0012366771697998047,
+        0.02853679656982422
+      ],
+      "waypoint_counts": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "successful_runs": 6,
+      "failed_runs": 0,
+      "timeout_runs": 0,
+      "error_messages": [],
+      "avg_score": 229.57985026525856,
+      "total_score": 1377.4791015915514,
+      "avg_time": 0.03562426567077637,
+      "avg_waypoints": 0.3333333333333333
+    }
+  },
+  "execution_summary": {
+    "total_time_seconds": 1.704399585723877,
+    "total_tasks": 9,
+    "successful_tasks": 9,
+    "failed_tasks": 0,
+    "timeout_tasks": 0,
+    "tasks_per_second": 5.280451881932136,
+    "best_generator": "Null",
+    "test_case_count": 3,
+    "generator_count": 3
+  },
+  "configuration": {
+    "max_workers": 16,
+    "timeout_per_algorithm": 3.0,
+    "use_subprocess": true
+  },
+  "category_analysis": {
+    "basic": {
+      "algorithm_count": 2,
+      "successful_count": 2,
+      "best_algorithm": "Null",
+      "avg_category_score": 218.63607897878313,
+      "success_rate": 1.0
+    }
+  },
+  "algorithm_categories": {
+    "basic": {
+      "Null": {
+        "scores": [
+          0.0,
+          623.0769230769231,
+          0.0
+        ],
+        "times": [
+          2.1457672119140625e-06,
+          2.384185791015625e-06,
+          2.6226043701171875e-06
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          0
+        ],
+        "successful_runs": 3,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 207.6923076923077,
+        "total_score": 623.0769230769231,
+        "avg_time": 2.384185791015625e-06,
+        "avg_waypoints": 0.0
+      },
+      "CornerTurning": {
+        "scores": [
+          641.1764705882354,
+          658.8235294117646,
+          26.096385542168676,
+          0.0,
+          0.0,
+          51.382716049382715
+        ],
+        "times": [
+          0.07649111747741699,
+          0.07916736602783203,
+          0.027028799057006836,
+          0.0012848377227783203,
+          0.0012366771697998047,
+          0.02853679656982422
+        ],
+        "waypoint_counts": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "successful_runs": 6,
+        "failed_runs": 0,
+        "timeout_runs": 0,
+        "error_messages": [],
+        "avg_score": 229.57985026525856,
+        "total_score": 1377.4791015915514,
+        "avg_time": 0.03562426567077637,
+        "avg_waypoints": 0.3333333333333333
+      }
+    },
+    "creative": {},
+    "weird": {}
+  },
+  "surprise_findings": []
+}

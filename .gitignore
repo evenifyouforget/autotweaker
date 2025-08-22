@@ -97,6 +97,19 @@ wandb/ # Weights & Biases
 tensorboard/ # TensorBoard logs
 mlruns/ # MLflow logs
 
+# Tournament and experimental results (autotweaker specific)
+tournament_logs/
+experimental_results/
+firelight_results/
+results/
+
+# Temporary tournament files
+*.tournament_cache
+tournament_*.json
+firelight_*.json
+galapagos_*.json
+autotweaker_temp_*/
+
 # Environment files
 *.env
 .env

@@ -2,7 +2,15 @@ import numpy as np
 import math
 import warnings
 from typing import Tuple, List, Dict
-from get_design import FCDesignStruct, FCPieceStruct
+try:
+    from get_design import FCDesignStruct, FCPieceStruct
+except ImportError:
+    # For testing, define minimal stubs
+    from typing import NamedTuple
+    from collections import namedtuple
+    
+    FCPieceStruct = namedtuple('FCPieceStruct', ['type_id', 'piece_id', 'x', 'y', 'w', 'h', 'angle', 'joints'])
+    FCDesignStruct = namedtuple('FCDesignStruct', ['name', 'base_level_id', 'goal_pieces', 'design_pieces', 'level_pieces', 'build_area', 'goal_area'])
 from PIL import Image, ImageDraw, ImageFont
 
 # World bounds from fcsim source
@@ -255,11 +263,14 @@ def draw_waypoints_preview(rgb_image: np.ndarray, waypoints: List[Dict[str, floa
     # Image dimensions
     height, width = rgb_image.shape[:2]
     
-    # World to pixel coordinate conversion
+    # Use coordinate transform utility
+    try:
+        from .coordinate_transform import world_point_to_pixel
+    except ImportError:
+        from coordinate_transform import world_point_to_pixel
+    
     def world_to_pixel(world_x, world_y):
-        pixel_x = (world_x - WORLD_MIN_X) * width / (WORLD_MAX_X - WORLD_MIN_X)
-        pixel_y = (world_y - WORLD_MIN_Y) * height / (WORLD_MAX_Y - WORLD_MIN_Y)
-        return int(pixel_x), int(pixel_y)
+        return world_point_to_pixel(world_x, world_y, (width, height))
     
     # Define colors
     waypoint_color = (128, 128, 128)  # Joint gray

@@ -1,0 +1,134 @@
+{
+  "tournament_info": {
+    "design_id": 12710291,
+    "total_runs": 6,
+    "runs_per_contestant": 2,
+    "timeout_per_run": 60,
+    "total_time": 0.13920855522155762
+  },
+  "contestants": [
+    {
+      "name": "Handcrafted",
+      "source": "handcrafted",
+      "waypoints": [
+        {
+          "x": -600,
+          "y": -600,
+          "radius": 300
+        },
+        {
+          "x": -600,
+          "y": 200,
+          "radius": 300
+        },
+        {
+          "x": 600,
+          "y": 200,
+          "radius": 300
+        },
+        {
+          "x": 450,
+          "y": 500,
+          "radius": 100
+        }
+      ],
+      "statistics": {
+        "total_runs": 2,
+        "successes": 0,
+        "timeouts": 0,
+        "failures": 2,
+        "success_rate": 0.0,
+        "avg_solve_time": null,
+        "median_solve_time": null,
+        "min_solve_time": null,
+        "max_solve_time": null,
+        "solve_time_stdev": 0,
+        "avg_final_score": Infinity,
+        "best_final_score": Infinity,
+        "score_stdev": 0.0
+      },
+      "runs": [
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        },
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        }
+      ]
+    },
+    {
+      "name": "Null",
+      "source": "algorithm",
+      "waypoints": [],
+      "statistics": {
+        "total_runs": 2,
+        "successes": 0,
+        "timeouts": 0,
+        "failures": 2,
+        "success_rate": 0.0,
+        "avg_solve_time": null,
+        "median_solve_time": null,
+        "min_solve_time": null,
+        "max_solve_time": null,
+        "solve_time_stdev": 0,
+        "avg_final_score": Infinity,
+        "best_final_score": Infinity,
+        "score_stdev": 0.0
+      },
+      "runs": [
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        },
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        }
+      ]
+    },
+    {
+      "name": "CornerTurning",
+      "source": "algorithm",
+      "waypoints": [],
+      "statistics": {
+        "total_runs": 2,
+        "successes": 0,
+        "timeouts": 0,
+        "failures": 2,
+        "success_rate": 0.0,
+        "avg_solve_time": null,
+        "median_solve_time": null,
+        "min_solve_time": null,
+        "max_solve_time": null,
+        "solve_time_stdev": 0,
+        "avg_final_score": Infinity,
+        "best_final_score": Infinity,
+        "score_stdev": 0.0
+      },
+      "runs": [
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        },
+        {
+          "time_to_solve": null,
+          "timeout_reached": false,
+          "final_score": Infinity,
+          "success": false
+        }
+      ]
+    }
+  ]
+}
